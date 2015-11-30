@@ -73,6 +73,11 @@
 </property>
 
 <property>
+  <name>hive.metastore.schema.verification</name>
+  <value>false</value>
+</property>
+
+<property>
   <name>hive.exec.local.scratchdir</name>
   <value>${test.tmp.dir}/localscratchdir/</value>
   <description>Local scratch space for Hive jobs</description>
@@ -213,8 +218,8 @@
 
 <property>
   <name>hive.stats.dbclass</name>
-  <value>counter</value>
-  <description>The default storatge that stores temporary hive statistics. Currently, jdbc, hbase and counter type is supported</description>
+  <value>fs</value>
+  <description>The default storatge that stores temporary hive statistics. Currently, fs type is supported</description>
 </property>
 
 <property>

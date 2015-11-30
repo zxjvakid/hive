@@ -676,7 +676,7 @@ public class HiveMetaStore extends ThriftHiveMetastore {
           function + extraLogInfo);
       if (MetricsFactory.getInstance() != null) {
         try {
-          MetricsFactory.getInstance().startScope(function);
+          MetricsFactory.getInstance().startStoredScope(function);
         } catch (IOException e) {
           LOG.debug("Exception when starting metrics scope"
             + e.getClass().getName() + " " + e.getMessage(), e);
@@ -720,7 +720,7 @@ public class HiveMetaStore extends ThriftHiveMetastore {
     private void endFunction(String function, MetaStoreEndFunctionContext context) {
       if (MetricsFactory.getInstance() != null) {
         try {
-          MetricsFactory.getInstance().endScope(function);
+          MetricsFactory.getInstance().endStoredScope(function);
         } catch (IOException e) {
           LOG.debug("Exception when closing metrics scope" + e);
         }
@@ -5978,8 +5978,6 @@ public class HiveMetaStore extends ThriftHiveMetastore {
       boolean useCompactProtocol = conf.getBoolVar(ConfVars.METASTORE_USE_THRIFT_COMPACT_PROTOCOL);
       useSasl = conf.getBoolVar(HiveConf.ConfVars.METASTORE_USE_THRIFT_SASL);
 
-      TServerTransport serverTransport = tcpKeepAlive ?
-          new TServerSocketKeepAlive(port) : new TServerSocket(port);
 
       TProcessor processor;
       TTransportFactory transFactory;
@@ -6027,6 +6025,9 @@ public class HiveMetaStore extends ThriftHiveMetastore {
           LOG.info("Starting DB backed MetaStore Server");
         }
       }
+ 
+       TServerTransport serverTransport = tcpKeepAlive ?
+        new TServerSocketKeepAlive(port) : new TServerSocket(port);
 
       TThreadPoolServer.Args args = new TThreadPoolServer.Args(serverTransport)
           .processor(processor)

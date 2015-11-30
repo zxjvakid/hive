@@ -162,10 +162,14 @@ public class SQLOperation extends ExecuteStatementOperation {
     } catch (HiveSQLException e) {
       setState(OperationState.ERROR);
       throw e;
-    } catch (Exception e) {
+    } catch (Throwable e) {
       setState(OperationState.ERROR);
       throw new HiveSQLException("Error running query: " + e.toString(), e);
     }
+  }
+
+  public String getQueryStr() {
+    return driver == null || driver.getPlan() == null ? "Unknown" : driver.getPlan().getQueryStr();
   }
 
   private void runQuery(HiveConf sqlOperationConf) throws HiveSQLException {
@@ -190,7 +194,7 @@ public class SQLOperation extends ExecuteStatementOperation {
         setState(OperationState.ERROR);
         throw e;
       }
-    } catch (Exception e) {
+    } catch (Throwable e) {
       setState(OperationState.ERROR);
       throw new HiveSQLException("Error running query: " + e.toString(), e);
     }
@@ -466,12 +470,12 @@ public class SQLOperation extends ExecuteStatementOperation {
    */
   private HiveConf getConfigForOperation() throws HiveSQLException {
     HiveConf sqlOperationConf = getParentSession().getHiveConf();
-    if (!getConfOverlay().isEmpty() || shouldRunAsync()) {
+    if (!confOverlay.isEmpty() || shouldRunAsync()) {
       // clone the partent session config for this query
       sqlOperationConf = new HiveConf(sqlOperationConf);
 
       // apply overlay query specific settings, if any
-      for (Map.Entry<String, String> confEntry : getConfOverlay().entrySet()) {
+      for (Map.Entry<String, String> confEntry : confOverlay.entrySet()) {
         try {
           sqlOperationConf.verifyAndSet(confEntry.getKey(), confEntry.getValue());
         } catch (IllegalArgumentException e) {

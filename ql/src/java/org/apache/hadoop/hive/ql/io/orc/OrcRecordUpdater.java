@@ -247,7 +247,8 @@ public class OrcRecordUpdater implements RecordUpdater {
       writerOptions = ((OrcOptions) options).getOrcOptions();
     }
     if (writerOptions == null) {
-      writerOptions = OrcFile.writerOptions(options.getConfiguration());
+      writerOptions = OrcFile.writerOptions(options.getTableProperties(),
+          options.getConfiguration());
     }
     writerOptions.fileSystem(fs).callback(indexBuilder);
     if (!options.isWritingBase()) {
@@ -267,6 +268,9 @@ public class OrcRecordUpdater implements RecordUpdater {
     item.setFieldValue(ROW_ID, rowId);
   }
 
+  public String toString() {
+    return getClass().getName() + "[" + path +"]";
+  }
   /**
    * To handle multiple INSERT... statements in a single transaction, we want to make sure
    * to generate unique {@code rowId} for all inserted rows of the transaction.

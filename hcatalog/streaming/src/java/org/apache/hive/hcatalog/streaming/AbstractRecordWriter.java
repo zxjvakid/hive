@@ -48,7 +48,7 @@ import java.util.HashSet;
 import java.util.List;
 
 
-abstract class AbstractRecordWriter implements RecordWriter {
+public abstract class AbstractRecordWriter implements RecordWriter {
   static final private Logger LOG = LoggerFactory.getLogger(AbstractRecordWriter.class.getName());
 
   final HiveConf conf;
@@ -65,6 +65,8 @@ abstract class AbstractRecordWriter implements RecordWriter {
 
   final AcidOutputFormat<?,?> outf;
   private Object[] bucketFieldData; // Pre-allocated in constructor. Updated on each write.
+  private Long curBatchMinTxnId;
+  private Long curBatchMaxTxnId;
 
   protected AbstractRecordWriter(HiveEndPoint endPoint, HiveConf conf)
           throws ConnectionError, StreamingException {
@@ -98,6 +100,12 @@ abstract class AbstractRecordWriter implements RecordWriter {
     }
   }
 
+  /**
+   * used to tag error msgs to provied some breadcrumbs
+   */
+  String getWatermark() {
+    return partitionPath + " txnIds[" + curBatchMinTxnId + "," + curBatchMaxTxnId + "]";
+  }
   // return the column numbers of the bucketed columns
   private List<Integer> getBucketColIDs(List<String> bucketCols, List<FieldSchema> cols) {
     ArrayList<Integer> result =  new ArrayList<Integer>(bucketCols.size());
@@ -110,7 +118,22 @@ abstract class AbstractRecordWriter implements RecordWriter {
     return result;
   }
 
-  abstract SerDe getSerde() throws SerializationError;
+  /**
+   * Get the SerDe for the Objects created by {@link #encode}.  This is public so that test
+   * frameworks can use it.
+   * @return serde
+   * @throws SerializationError
+   */
+  public abstract SerDe getSerde() throws SerializationError;
+
+  /**
+   * Encode a record as an Object that Hive can read with the ObjectInspector associated with the
+   * serde returned by {@link #getSerde}.  This is public so that test frameworks can use it.
+   * @param record record to be deserialized
+   * @return deserialized record as an Object
+   * @throws SerializationError
+   */
+  public abstract Object encode(byte[] record) throws SerializationError;
 
   protected abstract ObjectInspector[] getBucketObjectInspectors();
   protected abstract StructObjectInspector getRecordObjectInspector();
@@ -149,22 +172,32 @@ abstract class AbstractRecordWriter implements RecordWriter {
           throws StreamingIOFailure, SerializationError {
     try {
       LOG.debug("Creating Record updater");
+      curBatchMinTxnId = minTxnId;
+      curBatchMaxTxnId = maxTxnID;
       updaters = createRecordUpdaters(totalBuckets, minTxnId, maxTxnID);
     } catch (IOException e) {
-      LOG.error("Failed creating record updater", e);
-      throw new StreamingIOFailure("Unable to get new record Updater", e);
+      String errMsg = "Failed creating RecordUpdaterS for " + getWatermark();
+      LOG.error(errMsg, e);
+      throw new StreamingIOFailure(errMsg, e);
     }
   }
 
   @Override
   public void closeBatch() throws StreamingIOFailure {
-    try {
-      for (RecordUpdater updater : updaters) {
+    boolean haveError = false;
+    for (RecordUpdater updater : updaters) {
+      try {
+        //try not to leave any files open
         updater.close(false);
       }
-      updaters.clear();
-    } catch (IOException e) {
-      throw new StreamingIOFailure("Unable to close recordUpdater", e);
+      catch(Exception ex) {
+        haveError = true;
+        LOG.error("Unable to close " + updater + " due to: " + ex.getMessage(), ex);
+      }
+    }
+    updaters.clear();
+    if(haveError) {
+      throw new StreamingIOFailure("Encountered errors while closing (see logs) " + getWatermark());
     }
   }
 

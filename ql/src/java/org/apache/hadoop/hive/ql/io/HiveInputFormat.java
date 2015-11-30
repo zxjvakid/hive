@@ -54,7 +54,6 @@ import org.apache.hadoop.hive.ql.plan.PartitionDesc;
 import org.apache.hadoop.hive.ql.plan.TableScanDesc;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.serde2.ColumnProjectionUtils;
-import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.io.Writable;
 import org.apache.hadoop.io.WritableComparable;
 import org.apache.hadoop.mapred.FileInputFormat;
@@ -360,9 +359,7 @@ public class HiveInputFormat<K extends WritableComparable, V extends Writable>
       footerCount = Utilities.getFooterCount(table, conf);
       if (headerCount != 0 || footerCount != 0) {
         // Input file has header or footer, cannot be splitted.
-        conf.setLong(
-            ShimLoader.getHadoopShims().getHadoopConfNames().get("MAPREDMINSPLITSIZE"),
-            Long.MAX_VALUE);
+        HiveConf.setLongVar(conf, ConfVars.MAPREDMINSPLITSIZE, Long.MAX_VALUE);
       }
     }
 
@@ -510,10 +507,15 @@ public class HiveInputFormat<K extends WritableComparable, V extends Writable>
     // ensure filters are not set from previous pushFilters
     jobConf.unset(TableScanDesc.FILTER_TEXT_CONF_STR);
     jobConf.unset(TableScanDesc.FILTER_EXPR_CONF_STR);
+
+    Utilities.unsetSchemaEvolution(jobConf);
+
     TableScanDesc scanDesc = tableScan.getConf();
     if (scanDesc == null) {
       return;
     }
+
+    Utilities.addTableSchemaToConf(jobConf, tableScan);
 
     // construct column name list and types for reference by filter push down
     Utilities.setColumnNameList(jobConf, tableScan);

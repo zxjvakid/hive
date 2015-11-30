@@ -1818,8 +1818,9 @@ public class TestOrcFile {
     }
 
     @Override
-    void addedRow() throws IOException {
-      if (++rows % 100 == 0) {
+    void addedRow(int count) throws IOException {
+      rows += count;
+      if (rows % 100 == 0) {
         callback.checkMemory(rate);
       }
     }

@@ -37,6 +37,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
+import java.lang.reflect.Array;
+import java.lang.reflect.Field;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -75,7 +77,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.Deflater;
@@ -88,10 +89,9 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.commons.lang.WordUtils;
 import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.commons.lang3.tuple.Pair;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.filecache.DistributedCache;
+import org.apache.hadoop.fs.CommonConfigurationKeysPublic;
 import org.apache.hadoop.fs.ContentSummary;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -106,6 +106,7 @@ import org.apache.hadoop.hive.common.JavaUtils;
 import org.apache.hadoop.hive.common.StatsSetupConst;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
+import org.apache.hadoop.hive.metastore.MetaStoreUtils;
 import org.apache.hadoop.hive.metastore.Warehouse;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.api.Order;
@@ -121,6 +122,8 @@ import org.apache.hadoop.hive.ql.exec.mr.MapRedTask;
 import org.apache.hadoop.hive.ql.exec.spark.SparkTask;
 import org.apache.hadoop.hive.ql.exec.tez.DagUtils;
 import org.apache.hadoop.hive.ql.exec.tez.TezTask;
+import org.apache.hadoop.hive.ql.exec.vector.VectorizedInputFormatInterface;
+import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatchCtx;
 import org.apache.hadoop.hive.ql.io.AcidUtils;
 import org.apache.hadoop.hive.ql.io.ContentSummaryInputFormat;
 import org.apache.hadoop.hive.ql.io.HiveFileFormatUtils;
@@ -128,9 +131,11 @@ import org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat;
 import org.apache.hadoop.hive.ql.io.HiveInputFormat;
 import org.apache.hadoop.hive.ql.io.HiveOutputFormat;
 import org.apache.hadoop.hive.ql.io.HiveSequenceFileOutputFormat;
+import org.apache.hadoop.hive.ql.io.IOConstants;
 import org.apache.hadoop.hive.ql.io.OneNullRowInputFormat;
 import org.apache.hadoop.hive.ql.io.RCFile;
 import org.apache.hadoop.hive.ql.io.ReworkMapredInputFormat;
+import org.apache.hadoop.hive.ql.io.SelfDescribingInputFormatInterface;
 import org.apache.hadoop.hive.ql.io.merge.MergeFileMapper;
 import org.apache.hadoop.hive.ql.io.merge.MergeFileWork;
 import org.apache.hadoop.hive.ql.io.rcfile.stats.PartialScanMapper;
@@ -173,6 +178,15 @@ import org.apache.hadoop.hive.serde2.SerDeException;
 import org.apache.hadoop.hive.serde2.SerDeUtils;
 import org.apache.hadoop.hive.serde2.Serializer;
 import org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorFactory;
+import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorUtils;
+import org.apache.hadoop.hive.serde2.objectinspector.StandardConstantListObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.StandardConstantMapObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.StandardConstantStructObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.StandardStructObjectInspector;
+import org.apache.hadoop.hive.serde2.objectinspector.StructField;
+import org.apache.hadoop.hive.serde2.objectinspector.StructObjectInspector;
 import org.apache.hadoop.hive.shims.ShimLoader;
 import org.apache.hadoop.io.IOUtils;
 import org.apache.hadoop.io.SequenceFile;
@@ -195,13 +209,14 @@ import org.apache.hadoop.mapred.SequenceFileOutputFormat;
 import org.apache.hadoop.util.Progressable;
 import org.apache.hadoop.util.Shell;
 import org.apache.hive.common.util.ReflectionUtil;
+import org.objenesis.strategy.StdInstantiatorStrategy;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import com.esotericsoftware.kryo.serializers.FieldSerializer;
-import com.esotericsoftware.shaded.org.objenesis.strategy.StdInstantiatorStrategy;
 import com.google.common.base.Preconditions;
 
 /**
@@ -471,11 +486,6 @@ public final class Utilities {
         } catch (IOException cantBlameMeForTrying) { }
       }
     }
-  }
-
-  public static Map<Integer, String> getMapWorkVectorScratchColumnTypeMap(Configuration hiveConf) {
-    MapWork mapWork = getMapWork(hiveConf);
-    return mapWork.getVectorScratchColumnTypeMap();
   }
 
   public static void setWorkflowAdjacencies(Configuration conf, QueryPlan plan) {
@@ -1091,7 +1101,8 @@ public final class Utilities {
 
   // Kryo is not thread-safe,
   // Also new Kryo() is expensive, so we want to do it just once.
-  public static ThreadLocal<Kryo> runtimeSerializationKryo = new ThreadLocal<Kryo>() {
+  public static ThreadLocal<Kryo>
+      runtimeSerializationKryo = new ThreadLocal<Kryo>() {
     @Override
     protected Kryo initialValue() {
       Kryo kryo = new Kryo();
@@ -1099,10 +1110,22 @@ public final class Utilities {
       kryo.register(java.sql.Date.class, new SqlDateSerializer());
       kryo.register(java.sql.Timestamp.class, new TimestampSerializer());
       kryo.register(Path.class, new PathSerializer());
-      kryo.setInstantiatorStrategy(new StdInstantiatorStrategy());
+      kryo.register( Arrays.asList( "" ).getClass(), new ArraysAsListSerializer() );
+      ((Kryo.DefaultInstantiatorStrategy) kryo.getInstantiatorStrategy()).setFallbackInstantiatorStrategy(
+          new StdInstantiatorStrategy());
       removeField(kryo, Operator.class, "colExprMap");
-      removeField(kryo, ColumnInfo.class, "objectInspector");
       removeField(kryo, AbstractOperatorDesc.class, "statistics");
+      kryo.register(MapWork.class);
+      kryo.register(ReduceWork.class);
+      kryo.register(TableDesc.class);
+      kryo.register(UnionOperator.class);
+      kryo.register(FileSinkOperator.class);
+      kryo.register(HiveIgnoreKeyTextOutputFormat.class);
+      kryo.register(StandardConstantListObjectInspector.class);
+      kryo.register(StandardConstantMapObjectInspector.class);
+      kryo.register(StandardConstantStructObjectInspector.class);
+      kryo.register(SequenceFileInputFormat.class);
+      kryo.register(HiveSequenceFileOutputFormat.class);
       return kryo;
     };
   };
@@ -1121,15 +1144,25 @@ public final class Utilities {
       kryo.register(java.sql.Date.class, new SqlDateSerializer());
       kryo.register(java.sql.Timestamp.class, new TimestampSerializer());
       kryo.register(Path.class, new PathSerializer());
-      kryo.setInstantiatorStrategy(new StdInstantiatorStrategy());
+      kryo.register( Arrays.asList( "" ).getClass(), new ArraysAsListSerializer() );
+      ((Kryo.DefaultInstantiatorStrategy) kryo.getInstantiatorStrategy()).setFallbackInstantiatorStrategy(new StdInstantiatorStrategy());
       removeField(kryo, Operator.class, "colExprMap");
       removeField(kryo, ColumnInfo.class, "objectInspector");
+      removeField(kryo, AbstractOperatorDesc.class, "statistics");
       kryo.register(SparkEdgeProperty.class);
       kryo.register(MapWork.class);
       kryo.register(ReduceWork.class);
       kryo.register(SparkWork.class);
       kryo.register(TableDesc.class);
       kryo.register(Pair.class);
+      kryo.register(UnionOperator.class);
+      kryo.register(FileSinkOperator.class);
+      kryo.register(HiveIgnoreKeyTextOutputFormat.class);
+      kryo.register(StandardConstantListObjectInspector.class);
+      kryo.register(StandardConstantMapObjectInspector.class);
+      kryo.register(StandardConstantStructObjectInspector.class);
+      kryo.register(SequenceFileInputFormat.class);
+      kryo.register(HiveSequenceFileOutputFormat.class);
       return kryo;
     };
   };
@@ -1143,10 +1176,110 @@ public final class Utilities {
       kryo.register(java.sql.Date.class, new SqlDateSerializer());
       kryo.register(java.sql.Timestamp.class, new TimestampSerializer());
       kryo.register(Path.class, new PathSerializer());
-      kryo.setInstantiatorStrategy(new StdInstantiatorStrategy());
+      kryo.register( Arrays.asList( "" ).getClass(), new ArraysAsListSerializer() );
+      ((Kryo.DefaultInstantiatorStrategy) kryo.getInstantiatorStrategy()).setFallbackInstantiatorStrategy(
+          new StdInstantiatorStrategy());
+      removeField(kryo, Operator.class, "colExprMap");
+      removeField(kryo, AbstractOperatorDesc.class, "statistics");
+      kryo.register(MapWork.class);
+      kryo.register(ReduceWork.class);
+      kryo.register(TableDesc.class);
+      kryo.register(UnionOperator.class);
+      kryo.register(FileSinkOperator.class);
+      kryo.register(HiveIgnoreKeyTextOutputFormat.class);
+      kryo.register(StandardConstantListObjectInspector.class);
+      kryo.register(StandardConstantMapObjectInspector.class);
+      kryo.register(StandardConstantStructObjectInspector.class);
+      kryo.register(SequenceFileInputFormat.class);
+      kryo.register(HiveSequenceFileOutputFormat.class);
       return kryo;
     };
   };
+
+  /**
+   * A kryo {@link Serializer} for lists created via {@link Arrays#asList(Object...)}.
+   * <p>
+   * Note: This serializer does not support cyclic references, so if one of the objects
+   * gets set the list as attribute this might cause an error during deserialization.
+   * </p>
+   *
+   * This is from kryo-serializers package. Added explicitly to avoid classpath issues.
+   */
+  private static class ArraysAsListSerializer extends com.esotericsoftware.kryo.Serializer<List<?>> {
+
+    private Field _arrayField;
+
+    public ArraysAsListSerializer() {
+      try {
+        _arrayField = Class.forName( "java.util.Arrays$ArrayList" ).getDeclaredField( "a" );
+        _arrayField.setAccessible( true );
+      } catch ( final Exception e ) {
+        throw new RuntimeException( e );
+      }
+      // Immutable causes #copy(obj) to return the original object
+      setImmutable(true);
+    }
+
+    @Override
+    public List<?> read(final Kryo kryo, final Input input, final Class<List<?>> type) {
+      final int length = input.readInt(true);
+      Class<?> componentType = kryo.readClass( input ).getType();
+      if (componentType.isPrimitive()) {
+        componentType = getPrimitiveWrapperClass(componentType);
+      }
+      try {
+        final Object items = Array.newInstance( componentType, length );
+        for( int i = 0; i < length; i++ ) {
+          Array.set(items, i, kryo.readClassAndObject( input ));
+        }
+        return Arrays.asList( (Object[])items );
+      } catch ( final Exception e ) {
+        throw new RuntimeException( e );
+      }
+    }
+
+    @Override
+    public void write(final Kryo kryo, final Output output, final List<?> obj) {
+      try {
+        final Object[] array = (Object[]) _arrayField.get( obj );
+        output.writeInt(array.length, true);
+        final Class<?> componentType = array.getClass().getComponentType();
+        kryo.writeClass( output, componentType );
+        for( final Object item : array ) {
+          kryo.writeClassAndObject( output, item );
+        }
+      } catch ( final RuntimeException e ) {
+        // Don't eat and wrap RuntimeExceptions because the ObjectBuffer.write...
+        // handles SerializationException specifically (resizing the buffer)...
+        throw e;
+      } catch ( final Exception e ) {
+        throw new RuntimeException( e );
+      }
+    }
+
+    private Class<?> getPrimitiveWrapperClass(final Class<?> c) {
+      if (c.isPrimitive()) {
+        if (c.equals(Long.TYPE)) {
+          return Long.class;
+        } else if (c.equals(Integer.TYPE)) {
+          return Integer.class;
+        } else if (c.equals(Double.TYPE)) {
+          return Double.class;
+        } else if (c.equals(Float.TYPE)) {
+          return Float.class;
+        } else if (c.equals(Boolean.TYPE)) {
+          return Boolean.class;
+        } else if (c.equals(Character.TYPE)) {
+          return Character.class;
+        } else if (c.equals(Short.TYPE)) {
+          return Short.class;
+        } else if (c.equals(Byte.TYPE)) {
+          return Byte.class;
+        }
+      }
+      return c;
+    }
+  }
 
   public static TableDesc defaultTd;
   static {
@@ -2026,8 +2159,7 @@ public final class Utilities {
       FileStatus[] items = fs.listStatus(path);
       taskIDToFile = removeTempOrDuplicateFiles(items, fs);
       if(taskIDToFile != null && taskIDToFile.size() > 0 && conf != null && conf.getTable() != null
-          && (conf.getTable().getNumBuckets() > taskIDToFile.size())
-          && (HiveConf.getBoolVar(hconf, HiveConf.ConfVars.HIVEENFORCEBUCKETING))) {
+          && (conf.getTable().getNumBuckets() > taskIDToFile.size())) {
           // get the missing buckets and generate empty buckets for non-dynamic partition
         String taskID1 = taskIDToFile.keySet().iterator().next();
         Path bucketPath = taskIDToFile.values().iterator().next().getPath();
@@ -3782,6 +3914,22 @@ public final class Utilities {
     return false;
   }
 
+  /**
+   * @param conf
+   * @return the configured VectorizedRowBatchCtx for a MapWork task.
+   */
+  public static VectorizedRowBatchCtx getVectorizedRowBatchCtx(Configuration conf) {
+    VectorizedRowBatchCtx result = null;
+    if (HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED) &&
+        Utilities.getPlanPath(conf) != null) {
+      MapWork mapWork = Utilities.getMapWork(conf);
+      if (mapWork != null && mapWork.getVectorMode()) {
+        result = mapWork.getVectorizedRowBatchCtx();
+      }
+    }
+    return result;
+  }
+
   public static boolean isVectorMode(Configuration conf, MapWork mapWork) {
     return HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_VECTORIZATION_ENABLED)
         && mapWork.getVectorMode();
@@ -3929,7 +4077,8 @@ public final class Utilities {
    * @return True/False
    */
   public static boolean isDefaultNameNode(HiveConf conf) {
-    return !conf.getChangedProperties().containsKey(HiveConf.ConfVars.HADOOPFS.varname);
+    return !conf.getChangedProperties().containsKey(
+        CommonConfigurationKeysPublic.FS_DEFAULT_NAME_KEY);
   }
 
   /**
@@ -3993,6 +4142,7 @@ public final class Utilities {
     }
 
   }
+
   public static List<String> getStatsTmpDirs(BaseWork work, Configuration conf) {
 
     List<String> statsTmpDirs = new ArrayList<>();
@@ -4019,5 +4169,75 @@ public final class Utilities {
       }
     }
     return statsTmpDirs;
+  }
+
+  public static boolean isInputFileFormatSelfDescribing(PartitionDesc pd) {
+    Class<?> inputFormatClass = pd.getInputFileFormatClass();
+    return SelfDescribingInputFormatInterface.class.isAssignableFrom(inputFormatClass);
+  }
+
+  public static boolean isInputFileFormatVectorized(PartitionDesc pd) {
+    Class<?> inputFormatClass = pd.getInputFileFormatClass();
+    return VectorizedInputFormatInterface.class.isAssignableFrom(inputFormatClass);
+  }
+
+  public static void addSchemaEvolutionToTableScanOperator(Table table,
+      TableScanOperator tableScanOp) {
+    String colNames = MetaStoreUtils.getColumnNamesFromFieldSchema(table.getSd().getCols());
+    String colTypes = MetaStoreUtils.getColumnTypesFromFieldSchema(table.getSd().getCols());
+    tableScanOp.setSchemaEvolution(colNames, colTypes);
+  }
+
+  public static void addSchemaEvolutionToTableScanOperator(StructObjectInspector structOI,
+      TableScanOperator tableScanOp) {
+    String colNames = ObjectInspectorUtils.getFieldNames(structOI);
+    String colTypes = ObjectInspectorUtils.getFieldTypes(structOI);
+    tableScanOp.setSchemaEvolution(colNames, colTypes);
+  }
+
+  public static void unsetSchemaEvolution(Configuration conf) {
+    conf.unset(IOConstants.SCHEMA_EVOLUTION_COLUMNS);
+    conf.unset(IOConstants.SCHEMA_EVOLUTION_COLUMNS_TYPES);
+  }
+
+  public static void addTableSchemaToConf(Configuration conf,
+      TableScanOperator tableScanOp) {
+    String schemaEvolutionColumns = tableScanOp.getSchemaEvolutionColumns();
+    if (schemaEvolutionColumns != null) {
+      conf.set(IOConstants.SCHEMA_EVOLUTION_COLUMNS, tableScanOp.getSchemaEvolutionColumns());
+      conf.set(IOConstants.SCHEMA_EVOLUTION_COLUMNS_TYPES, tableScanOp.getSchemaEvolutionColumnsTypes());
+    } else {
+      LOG.info("schema.evolution.columns and schema.evolution.columns.types not available");
+    }
+  }
+
+  /**
+   * Create row key and value object inspectors for reduce vectorization.
+   * The row object inspector used by ReduceWork needs to be a **standard**
+   * struct object inspector, not just any struct object inspector.
+   * @param keyInspector
+   * @param valueInspector
+   * @return OI
+   * @throws HiveException
+   */
+  public static StandardStructObjectInspector constructVectorizedReduceRowOI(
+      StructObjectInspector keyInspector, StructObjectInspector valueInspector)
+          throws HiveException {
+
+    ArrayList<String> colNames = new ArrayList<String>();
+    ArrayList<ObjectInspector> ois = new ArrayList<ObjectInspector>();
+    List<? extends StructField> fields = keyInspector.getAllStructFieldRefs();
+    for (StructField field: fields) {
+      colNames.add(Utilities.ReduceField.KEY.toString() + "." + field.getFieldName());
+      ois.add(field.getFieldObjectInspector());
+    }
+    fields = valueInspector.getAllStructFieldRefs();
+    for (StructField field: fields) {
+      colNames.add(Utilities.ReduceField.VALUE.toString() + "." + field.getFieldName());
+      ois.add(field.getFieldObjectInspector());
+    }
+    StandardStructObjectInspector rowObjectInspector = ObjectInspectorFactory.getStandardStructObjectInspector(colNames, ois);
+
+    return rowObjectInspector;
   }
 }

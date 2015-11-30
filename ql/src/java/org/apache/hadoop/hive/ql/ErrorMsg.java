@@ -423,6 +423,7 @@ public enum ErrorMsg {
   IMPORT_INTO_STRICT_REPL_TABLE(10303,"Non-repl import disallowed against table that is a destination of replication."),
   CTAS_LOCATION_NONEMPTY(10304, "CREATE-TABLE-AS-SELECT cannot create table with location to a non-empty directory."),
   CTAS_CREATES_VOID_TYPE(10305, "CREATE-TABLE-AS-SELECT creates a VOID type, please use CAST to specify the type, near field: "),
+  TBL_SORTED_NOT_BUCKETED(10306, "Destination table {0} found to be sorted but not bucketed.", true),
   //========================== 20000 range starts here ========================//
   SCRIPT_INIT_ERROR(20000, "Unable to initialize custom script."),
   SCRIPT_IO_ERROR(20001, "An error occurred while reading or writing to your custom script. "
@@ -484,8 +485,13 @@ public enum ErrorMsg {
 
 
   INVALID_FILE_FORMAT_IN_LOAD(30019, "The file that you are trying to load does not match the" +
-      " file format of the destination table.")
+      " file format of the destination table."),
 
+  SCHEMA_REQUIRED_TO_READ_ACID_TABLES(30020, "Neither the configuration variables " +
+          "schema.evolution.columns / schema.evolution.columns.types " +
+          "nor the " +
+          "columns / columns.types " +
+          "are set.  Table schema information is required to read ACID tables")
   ;
 
   private int errorCode;

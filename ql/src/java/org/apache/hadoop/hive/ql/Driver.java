@@ -36,6 +36,7 @@ import java.util.Set;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.mapreduce.MRJobConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.apache.hadoop.fs.FSDataInputStream;
@@ -114,6 +115,7 @@ import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObje
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObject.HivePrivObjectActionType;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObject.HivePrivilegeObjectType;
 import org.apache.hadoop.hive.ql.session.OperationLog;
+import org.apache.hadoop.hive.ql.session.OperationLog.LoggingLevel;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
 import org.apache.hadoop.hive.serde2.ByteStream;
@@ -1046,7 +1048,7 @@ public class Driver implements CommandProcessor {
         // don't update it after that until txn completes.  Thus the check for {@code initiatingTransaction}
         //For autoCommit=true, Read-only statements, txn is implicit, i.e. lock in the snapshot
         //for each statement.
-        recordValidTxns();
+        recordValidTxns();//todo: we should only need to do this for RO query if it has ACID resources in it.
       }
 
       return 0;
@@ -1458,7 +1460,7 @@ public class Driver implements CommandProcessor {
   public int execute() throws CommandNeedRetryException {
     PerfLogger perfLogger = SessionState.getPerfLogger();
     perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.DRIVER_EXECUTE);
-    boolean noName = StringUtils.isEmpty(conf.getVar(HiveConf.ConfVars.HADOOPJOBNAME));
+    boolean noName = StringUtils.isEmpty(conf.get(MRJobConfig.JOB_NAME));
     int maxlen = conf.getIntVar(HiveConf.ConfVars.HIVEJOBNAMELENGTH);
 
     String queryId = plan.getQueryId();
@@ -1505,10 +1507,12 @@ public class Driver implements CommandProcessor {
         }
       }
 
-      int jobs = Utilities.getMRTasks(plan.getRootTasks()).size()
+      int mrJobs = Utilities.getMRTasks(plan.getRootTasks()).size();
+      int jobs = mrJobs
         + Utilities.getTezTasks(plan.getRootTasks()).size()
         + Utilities.getSparkTasks(plan.getRootTasks()).size();
       if (jobs > 0) {
+        logMrWarning(mrJobs);
         console.printInfo("Query ID = " + plan.getQueryId());
         console.printInfo("Total jobs = " + jobs);
       }
@@ -1552,7 +1556,6 @@ public class Driver implements CommandProcessor {
         // Launch upto maxthreads tasks
         Task<? extends Serializable> task;
         while ((task = driverCxt.getRunnable(maxthreads)) != null) {
-          perfLogger.PerfLogBegin(CLASS_NAME, PerfLogger.TASK + task.getName() + "." + task.getId());
           TaskRunner runner = launchTask(task, queryId, noName, jobname, jobs, driverCxt);
           if (!runner.isRunning()) {
             break;
@@ -1701,7 +1704,7 @@ public class Driver implements CommandProcessor {
         SessionState.get().getHiveHistory().endQuery(queryId);
       }
       if (noName) {
-        conf.setVar(HiveConf.ConfVars.HADOOPJOBNAME, "");
+        conf.set(MRJobConfig.JOB_NAME, "");
       }
       dumpMetaCallTimingWithoutEx("execution");
       perfLogger.PerfLogEnd(CLASS_NAME, PerfLogger.DRIVER_EXECUTE);
@@ -1729,6 +1732,21 @@ public class Driver implements CommandProcessor {
     console.printInfo("OK");
 
     return (0);
+  }
+
+  private void logMrWarning(int mrJobs) {
+    if (mrJobs <= 0 || !("mr".equals(HiveConf.getVar(conf, ConfVars.HIVE_EXECUTION_ENGINE)))) {
+      return;
+    }
+    String warning = HiveConf.generateMrDeprecationWarning();
+    LOG.warn(warning);
+    warning = "WARNING: " + warning;
+    console.printInfo(warning);
+    // Propagate warning to beeline via operation log.
+    OperationLog ol = OperationLog.getCurrentOperationLog();
+    if (ol != null) {
+      ol.writeOperationLog(LoggingLevel.EXECUTION, warning + "\n");
+    }
   }
 
   private void setErrorMsgAndDetail(int exitVal, Throwable downstreamError, Task tsk) {
@@ -1769,7 +1787,7 @@ public class Driver implements CommandProcessor {
     }
     if (tsk.isMapRedTask() && !(tsk instanceof ConditionalTask)) {
       if (noName) {
-        conf.setVar(HiveConf.ConfVars.HADOOPJOBNAME, jobname + "(" + tsk.getId() + ")");
+        conf.set(MRJobConfig.JOB_NAME, jobname + "(" + tsk.getId() + ")");
       }
       conf.set("mapreduce.workflow.node.name", tsk.getId());
       Utilities.setWorkflowAdjacencies(conf, plan);
