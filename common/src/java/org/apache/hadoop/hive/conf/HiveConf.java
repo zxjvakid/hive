@@ -2900,6 +2900,13 @@ public class HiveConf extends Configuration {
     LLAP_IO_USE_FILEID_PATH("hive.llap.io.use.fileid.path", true,
         "Whether LLAP should use fileId (inode)-based path to ensure better consistency for the\n" +
         "cases of file overwrites. This is supported on HDFS."),
+    LLAP_IO_ENCODE_ALLOC_SIZE("hive.llap.io.encode.alloc.size", "256Kb", new SizeValidator(),
+        "Allocation size for the buffers used to cache encoded data from non-ORC files. Must\n" +
+        "be a power of two between " + LLAP_ALLOCATOR_MIN_ALLOC + " and\n" +
+        LLAP_ALLOCATOR_MAX_ALLOC + "."),
+    LLAP_IO_ENCODE_SLICE_ROW_COUNT("hive.llap.io.encode.slice.row.count", 100000,
+        "Row count to use to separate cache slices when caching encoded data from row-based\n" +
+        "inputs into LLAP cache."),
     LLAP_ORC_ENABLE_TIME_COUNTERS("hive.llap.io.orc.time.counters", true,
         "Whether to enable time counters for LLAP IO layer (time spent in HDFS, etc.)"),
     LLAP_AUTO_ALLOW_UBER("hive.llap.auto.allow.uber", false,

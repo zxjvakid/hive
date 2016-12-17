@@ -26,6 +26,7 @@ import org.apache.hadoop.hive.llap.io.api.impl.ColumnVectorBatch;
 import org.apache.hadoop.hive.llap.metrics.LlapDaemonIOMetrics;
 import org.apache.hadoop.hive.ql.io.orc.encoded.Consumer;
 import org.apache.hive.common.util.FixedSizedObjectPool;
+import org.apache.orc.TypeDescription;
 
 public abstract class EncodedDataConsumer<BatchKey, BatchType extends EncodedColumnBatch<BatchKey>>
   implements Consumer<BatchType>, ReadPipeline {
@@ -121,5 +122,11 @@ public abstract class EncodedDataConsumer<BatchKey, BatchType extends EncodedCol
   public void unpause() {
     // We are just a relay; send unpause to encoded data producer.
     upstreamFeedback.unpause();
+  }
+
+  @Override
+  public TypeDescription getFileSchema() {
+    // TODO: the ORC-specific method should be removed from the interface instead.
+    throw new UnsupportedOperationException();
   }
 }

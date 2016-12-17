@@ -15,17 +15,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.hadoop.hive.llap.io.decode;
 
-import java.util.concurrent.Callable;
+import org.apache.hadoop.hive.ql.exec.vector.VectorizedInputFormatInterface;
+import org.apache.hadoop.hive.ql.io.LlapWrappableInputFormatInterface;
 
-import org.apache.hadoop.hive.llap.ConsumerFeedback;
-import org.apache.hadoop.hive.llap.io.api.impl.ColumnVectorBatch;
-import org.apache.orc.TypeDescription;
+// TODO# VectorizedInputFormatInterface is a hack... only "vectorized" in LLAP IO.
+//       How to resolve optimizer dependency?
+public class LlapTextInputFormat extends org.apache.hadoop.mapred.TextInputFormat
+  implements LlapWrappableInputFormatInterface, VectorizedInputFormatInterface {
 
-public interface ReadPipeline extends ConsumerFeedback<ColumnVectorBatch> {
-  public Callable<Void> getReadCallable();
-  TypeDescription getFileSchema(); // TODO: this is ORC-specific and should be removed
-  TypeDescription getReaderSchema();
-  boolean[] getIncludedColumns();
+  @Override
+  public boolean isSerdeBased() {
+    return true;
+  }
 }
