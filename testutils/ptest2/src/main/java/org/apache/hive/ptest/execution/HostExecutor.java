@@ -55,7 +55,7 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 
-class HostExecutor {
+public class HostExecutor {
   private final Host mHost;
   private final List<Drone> mDrones;
   private final ListeningExecutorService mExecutor;

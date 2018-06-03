@@ -24,13 +24,14 @@ import java.io.PrintWriter;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.hive.ptest.execution.ssh.NonZeroExitCodeException;
 import org.slf4j.Logger;
 
 import com.google.common.collect.ImmutableMap;
 
 public class PrepPhase extends Phase {
-  private final File mScratchDir;
-  private final File mPatchFile;
+  protected final File mScratchDir;
+  protected final File mPatchFile;
 
   public PrepPhase(List<HostExecutor> hostExecutors,
       LocalCommandFactory localCommandFactory,
@@ -40,23 +41,12 @@ public class PrepPhase extends Phase {
     this.mScratchDir = scratchDir;
     this.mPatchFile = patchFile;
   }
+
   @Override
   public void execute() throws Exception {
     execLocally("rm -rf $workingDir/scratch");
     execLocally("mkdir -p $workingDir/scratch");
-    if(mPatchFile != null) {
-      File smartApplyPatch = new File(mScratchDir, "smart-apply-patch.sh");
-      PrintWriter writer = new PrintWriter(smartApplyPatch);
-      try {
-        writer.write(Templates.readResource("smart-apply-patch.sh"));
-        if(writer.checkError()) {
-          throw new IOException("Error writing to " + smartApplyPatch);
-        }
-      } finally {
-        writer.close();
-      }
-      execLocally("cp -f " + mPatchFile.getPath() + " $workingDir/scratch/build.patch");
-    }
+    createPatchFiles();
     long start;
     long elapsedTime;
     // source prep
@@ -71,5 +61,22 @@ public class PrepPhase extends Phase {
     elapsedTime = TimeUnit.MINUTES.convert((System.currentTimeMillis() - start),
         TimeUnit.MILLISECONDS);
     logger.info("PERF: source prep took " + elapsedTime + " minutes");
+  }
+
+  protected void createPatchFiles()
+      throws IOException, InterruptedException, NonZeroExitCodeException {
+    if(mPatchFile != null) {
+      File smartApplyPatch = new File(mScratchDir, "smart-apply-patch.sh");
+      PrintWriter writer = new PrintWriter(smartApplyPatch);
+      try {
+        writer.write(Templates.readResource("smart-apply-patch.sh"));
+        if(writer.checkError()) {
+          throw new IOException("Error writing to " + smartApplyPatch);
+        }
+      } finally {
+        writer.close();
+      }
+      execLocally("cp -f " + mPatchFile.getPath() + " $workingDir/scratch/build.patch");
+    }
   }
 }

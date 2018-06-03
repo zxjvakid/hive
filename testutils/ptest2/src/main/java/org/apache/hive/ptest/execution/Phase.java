@@ -160,6 +160,7 @@ public abstract class Phase {
     results.addAll(flatten(futures));
     return results;
   }
+
   private <T extends RemoteCommandResult> List<T> flatten(List<ListenableFuture<List<ListenableFuture<T>>>> futures)
       throws Exception {
     List<T> results = Lists.newArrayList();

@@ -23,12 +23,15 @@ import com.google.common.base.Supplier;
 import com.google.common.collect.ImmutableMap;
 import org.apache.hive.ptest.execution.conf.TestBatch;
 import org.apache.hive.ptest.execution.context.ExecutionContext;
+import org.apache.hive.ptest.execution.ssh.RemoteCommandResult;
 import org.slf4j.Logger;
 
 import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 public class DockerBasedExecutionPhase extends ExecutionPhase {

@@ -1,0 +1,33 @@
+FROM centos
+
+RUN yum upgrade -y && \
+    yum update -y && \
+    yum install -y java-1.8.0-openjdk-devel unzip git maven
+
+RUN useradd -m ptestuser
+RUN mkdir -p /home/ptestuser
+COPY smart-apply-patch.sh scratch/build.patch /home/ptestuser/scratch/
+RUN chown -R ptestuser /home/ptestuser
+RUN chmod -R 755 /home/ptestuser
+RUN ls -l /home
+USER ptestuser
+RUN cd /home/ptestuser
+WORKDIR /home/ptestuser
+ARG workingDir
+ARG mavenEnvOpts
+ARG repository
+ARG branch
+ARG label
+
+RUN export MAVEN_OPTS="$mavenEnvOpts"
+RUN /usr/bin/git clone $repository
+RUN cd hive
+WORKDIR /home/ptestuser/hive
+RUN /usr/bin/git checkout $branch || checkout -b $branch origin/$branch
+RUN /usr/bin/git reset --hard origin/$branch
+RUN /usr/bin/git merge --ff-only origin/$branch
+RUN /home/ptestuser/scratch/smart-apply-patch.sh /home/ptestuser/scratch/build.patch
+RUN /usr/bin/mvn -B -T 4 -q install -Dtest=TestMetastoreConf
+RUN cd itests
+RUN /usr/bin/mvn -B -T 4 -q  install -DskipSparkTests -DskipTests
+RUN echo This build is labeled $label

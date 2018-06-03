@@ -58,6 +58,7 @@ public abstract class AbstractTestPhase {
   protected static final String BRANCH = "branch";
   protected static final String REPOSITORY = "repository";
   protected static final String REPOSITORY_NAME = "repositoryName";
+  protected static final String MAVEN_OPTS = "-Xmx128m";
 
   protected Host host;
   protected File baseDir;
@@ -100,6 +101,7 @@ public abstract class AbstractTestPhase {
         .put("logDir", logDir.getAbsolutePath())
         .put("repository", REPOSITORY)
         .put("repositoryName", REPOSITORY_NAME)
+        .put("mavenEnvOpts", MAVEN_OPTS)
         .build();
     host = new Host(HOST, USER, new String[] { LOCAL_DIR }, 2);
   }
@@ -115,7 +117,7 @@ public abstract class AbstractTestPhase {
     String osName = System.getProperty("os.name");
     return osName.contains("OS X");
   }
-  static File createBaseDir(String name) throws IOException {
+  public static File createBaseDir(String name) throws IOException {
     File baseDir;
     if(isOSX()) {
       // else osx gives ugly temp path which screws up approvals
