@@ -23,6 +23,10 @@ import org.apache.hive.ptest.api.server.TestLogger;
 import org.apache.hive.ptest.execution.ContainerClient;
 import org.apache.hive.ptest.execution.ContainerClientFactory.ContainerClientContext;
 import org.apache.hive.ptest.execution.Templates;
+<<<<<<< HEAD
+=======
+import org.apache.hive.ptest.execution.conf.TestBatch;
+>>>>>>> a1fe94a... Temp work related to docker execution phase. code may not compile
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,9 +51,17 @@ public class DockerClient implements ContainerClient {
   }
 
   @Override
+<<<<<<< HEAD
   public void defineImage(String dir, String label) throws IOException {
     if (label == null)
       label = UUID.randomUUID().toString();
+=======
+  public void defineImage(String dir) throws Exception {
+    final String label = context.getTemplateDefaults().get("buildTag");
+    if (label == null) {
+      throw new Exception("buildTag not found");
+    }
+>>>>>>> a1fe94a... Temp work related to docker execution phase. code may not compile
     File dockerfile = new File(dir, "Dockerfile");
     logger.info("Writing {} from template", dockerfile);
     Map<String, String> templateDefaults = context.getTemplateDefaults();
@@ -68,8 +80,12 @@ public class DockerClient implements ContainerClient {
     logger.info("Building image");
     String dockerBuildCommand =
         new StringBuilder("docker build")
+<<<<<<< HEAD
             //TODO do we need --tag?
             //.append(" --tag " + imageName())
+=======
+            .append(" --tag " + imageName())
+>>>>>>> a1fe94a... Temp work related to docker execution phase. code may not compile
             .append(" --build-arg ")
             .append(" workingDir=$workingDir")
             .append(" --build-arg ")
@@ -87,8 +103,30 @@ public class DockerClient implements ContainerClient {
     return dockerBuildCommand;
   }
 
+<<<<<<< HEAD
   private String imageName() {
     //TODO add a proper image name using patch number
     return "Ptest-dummy-build";
+=======
+  @Override
+  public String getRunContainerCommand(String containerName, TestBatch batch) {
+    return new StringBuilder("docker run")
+        .append(" --name " + containerName)
+        .append(" " + imageName())
+        .append(" /bin/bash")
+        .append(" -c")
+        .append("( cd " + batch.getTestModuleRelativeDir() + "; ")
+        .append("/usr/bin/mvn")
+        .append(" -Dsurefire.timeout=40m")
+        .append(" -B test")
+        .append(" " + batch.getTestArguments())
+        .append(" 1>$workingDir/logs"  + File.separatorChar + "maven.txt")
+        .append(" 2>&1")
+        .toString();
+  }
+
+  private String imageName() {
+    return context.getTemplateDefaults().get("buildTag");
+>>>>>>> a1fe94a... Temp work related to docker execution phase. code may not compile
   }
 }

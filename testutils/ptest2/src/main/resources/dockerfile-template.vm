@@ -17,7 +17,11 @@ ARG workingDir
 ARG mavenEnvOpts
 ARG repository
 ARG branch
+<<<<<<< HEAD
 ARG label
+=======
+ARG buildTag
+>>>>>>> a1fe94a... Temp work related to docker execution phase. code may not compile
 
 RUN export MAVEN_OPTS="$mavenEnvOpts"
 RUN /usr/bin/git clone $repository
@@ -30,4 +34,8 @@ RUN /home/ptestuser/scratch/smart-apply-patch.sh /home/ptestuser/scratch/build.p
 RUN /usr/bin/mvn -B -T 4 -q install -Dtest=TestMetastoreConf
 RUN cd itests
 RUN /usr/bin/mvn -B -T 4 -q  install -DskipSparkTests -DskipTests
+<<<<<<< HEAD
 RUN echo This build is labeled $label
+=======
+RUN echo This build is labeled $buildTag
+>>>>>>> a1fe94a... Temp work related to docker execution phase. code may not compile

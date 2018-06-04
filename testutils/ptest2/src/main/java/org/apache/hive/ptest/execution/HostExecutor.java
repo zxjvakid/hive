@@ -56,29 +56,27 @@ import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 
 public class HostExecutor {
-  private final Host mHost;
+  protected final Host mHost;
   private final List<Drone> mDrones;
-  private final ListeningExecutorService mExecutor;
+  protected final ListeningExecutorService mExecutor;
   private final SSHCommandExecutor mSSHCommandExecutor;
   private final RSyncCommandExecutor mRSyncCommandExecutor;
-  private final ImmutableMap<String, String> mTemplateDefaults;
-  private final Logger mLogger;
+  protected final ImmutableMap<String, String> mTemplateDefaults;
+  protected final Logger mLogger;
   private final File mLocalScratchDirectory;
   private final File mSuccessfulTestLogDir;
   private final File mFailedTestLogDir;
-  private final long mNumPollSeconds;
+  protected final long mNumPollSeconds;
   private final boolean fetchLogsForSuccessfulTests;
-  private volatile boolean mShutdown;
-  private int numParallelBatchesProcessed = 0;
-  private int numIsolatedBatchesProcessed = 0;
+  protected volatile boolean mShutdown;
+  protected int numParallelBatchesProcessed = 0;
+  protected int numIsolatedBatchesProcessed = 0;
   private AtomicLong totalElapsedTimeInRsync = new AtomicLong(0L);
   
-  HostExecutor(Host host, String privateKey, ListeningExecutorService executor,
-      SSHCommandExecutor sshCommandExecutor,
-      RSyncCommandExecutor rsyncCommandExecutor,
-      ImmutableMap<String, String> templateDefaults, File scratchDir,
-      File succeededLogDir, File failedLogDir, long numPollSeconds,
-      boolean fetchLogsForSuccessfulTests, Logger logger) {
+  protected HostExecutor(Host host, String privateKey, ListeningExecutorService executor,
+      SSHCommandExecutor sshCommandExecutor, RSyncCommandExecutor rsyncCommandExecutor,
+      ImmutableMap<String, String> templateDefaults, File scratchDir, File succeededLogDir,
+      File failedLogDir, long numPollSeconds, boolean fetchLogsForSuccessfulTests, Logger logger) {
     List<Drone> drones = Lists.newArrayList();
     String[] localDirs = host.getLocalDirectories();
     for (int index = 0; index < host.getThreads(); index++) {
@@ -103,7 +101,7 @@ public class HostExecutor {
   /**
    * @return failed tests
    */
-  ListenableFuture<Void> submitTests(final BlockingQueue<TestBatch> parallelWorkQueue,
+  protected ListenableFuture<Void> submitTests(final BlockingQueue<TestBatch> parallelWorkQueue,
       final BlockingQueue<TestBatch> isolatedWorkQueue, final Set<TestBatch> failedTestResults) {
     return mExecutor.submit(new Callable<Void>() {
       @Override
@@ -152,7 +150,7 @@ public class HostExecutor {
    * leaving this host with zero functioning drones. If all drones
    * are removed the host will be replaced before the next run.
    */
-  private void executeTests(final BlockingQueue<TestBatch> parallelWorkQueue,
+  protected void executeTests(final BlockingQueue<TestBatch> parallelWorkQueue,
       final BlockingQueue<TestBatch> isolatedWorkQueue, final Set<TestBatch> failedTestResults)
           throws Exception {
     if(mShutdown) {

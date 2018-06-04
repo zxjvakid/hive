@@ -54,7 +54,11 @@ public class DockerPrepPhase extends PrepPhase {
     long elapsedTime;
     start = System.currentTimeMillis();
     //TODO give a proper label to the build
+<<<<<<< HEAD
     containerClient.defineImage(getLocalScratchDir(), null);
+=======
+    containerClient.defineImage(getLocalScratchDir());
+>>>>>>> a1fe94a... Temp work related to docker execution phase. code may not compile
     execLocally(getDockerBuildCommand());
     elapsedTime = TimeUnit.MINUTES.convert((System.currentTimeMillis() - start),
         TimeUnit.MILLISECONDS);

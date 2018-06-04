@@ -22,10 +22,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -52,11 +50,11 @@ public class ExecutionPhase extends Phase {
   private final HostExecutorBuilder hostExecutorBuilder;
   private final File succeededLogDir;
   private final File failedLogDir;
-  private final BlockingQueue<TestBatch> parallelWorkQueue;
-  private final BlockingQueue<TestBatch> isolatedWorkQueue;
+  protected final BlockingQueue<TestBatch> parallelWorkQueue;
+  protected final BlockingQueue<TestBatch> isolatedWorkQueue;
   private final Set<String> executedTests;
   private final Set<String> failedTests;
-  private final Supplier<List<TestBatch>> testBatchSupplier;
+  protected final Supplier<List<TestBatch>> testBatchSupplier;
   private final Set<TestBatch> failedTestResults;
 
   public ExecutionPhase(List<HostExecutor> hostExecutors, ExecutionContext executionContext,
@@ -82,15 +80,7 @@ public class ExecutionPhase extends Phase {
   @Override
   public void execute() throws Throwable {
     long start = System.currentTimeMillis();
-    List<TestBatch> testBatches = Lists.newArrayList();
-    for(TestBatch batch : testBatchSupplier.get()) {
-      testBatches.add(batch);
-      if(batch.isParallel()) {
-        parallelWorkQueue.add(batch);
-      } else {
-        isolatedWorkQueue.add(batch);
-      }
-    }
+    List<TestBatch> testBatches = getTestBatches();
     logger.info("ParallelWorkQueueSize={}, IsolatedWorkQueueSize={}", parallelWorkQueue.size(),
         isolatedWorkQueue.size());
     if (logger.isDebugEnabled()) {
@@ -113,45 +103,62 @@ public class ExecutionPhase extends Phase {
         }
         Futures.allAsList(results).get();
       } while(!(parallelWorkQueue.isEmpty() && isolatedWorkQueue.isEmpty()));
-      for(TestBatch batch : testBatches) {
-        File batchLogDir;
-        if(failedTestResults.contains(batch)) {
-          batchLogDir = new File(failedLogDir, batch.getName());
-        } else {
-          batchLogDir = new File(succeededLogDir, batch.getName());
-        }
-        JUnitReportParser parser = new JUnitReportParser(logger, batchLogDir);
-        executedTests.addAll(parser.getAllExecutedTests());
-        for (String failedTest : parser.getAllFailedTests()) {
-          failedTests.add(failedTest + " (batchId=" + batch.getBatchId() + ")");
-        }
-
-        // if the TEST*.xml was not generated or was corrupt, let someone know
-        if (parser.getTestClassesWithReportAvailable().size() < batch.getTestClasses().size()) {
-          Set<String> expTestClasses = new HashSet<>(batch.getTestClasses());
-          expTestClasses.removeAll(parser.getTestClassesWithReportAvailable());
-          for (String testClass : expTestClasses) {
-            StringBuilder messageBuilder = new StringBuilder();
-            messageBuilder.append(testClass).append(" - did not produce a TEST-*.xml file (likely timed out)")
-                .append(" (batchId=").append(batch.getBatchId()).append(")");
-            if (batch instanceof QFileTestBatch) {
-              Collection<String> tests = ((QFileTestBatch)batch).getTests();
-              if (tests.size() != 0) {
-                messageBuilder.append("\n\t[");
-                messageBuilder.append(Joiner.on(",").join(tests));
-                messageBuilder.append("]");
-              }
-            }
-            failedTests.add(messageBuilder.toString());
-          }
-        }
-      }
+      checkResults(testBatches);
     } finally {
       long elapsed = System.currentTimeMillis() - start;
       addAggregatePerfMetrics();
       logger.info("PERF: exec phase " +
           TimeUnit.MINUTES.convert(elapsed, TimeUnit.MILLISECONDS) + " minutes");
     }
+  }
+
+  protected void checkResults(List<TestBatch> testBatches) throws Exception {
+    for(TestBatch batch : testBatches) {
+      File batchLogDir;
+      if(failedTestResults.contains(batch)) {
+        batchLogDir = new File(failedLogDir, batch.getName());
+      } else {
+        batchLogDir = new File(succeededLogDir, batch.getName());
+      }
+      JUnitReportParser parser = new JUnitReportParser(logger, batchLogDir);
+      executedTests.addAll(parser.getAllExecutedTests());
+      for (String failedTest : parser.getAllFailedTests()) {
+        failedTests.add(failedTest + " (batchId=" + batch.getBatchId() + ")");
+      }
+
+      // if the TEST*.xml was not generated or was corrupt, let someone know
+      if (parser.getTestClassesWithReportAvailable().size() < batch.getTestClasses().size()) {
+        Set<String> expTestClasses = new HashSet<>(batch.getTestClasses());
+        expTestClasses.removeAll(parser.getTestClassesWithReportAvailable());
+        for (String testClass : expTestClasses) {
+          StringBuilder messageBuilder = new StringBuilder();
+          messageBuilder.append(testClass).append(" - did not produce a TEST-*.xml file (likely timed out)")
+              .append(" (batchId=").append(batch.getBatchId()).append(")");
+          if (batch instanceof QFileTestBatch) {
+            Collection<String> tests = ((QFileTestBatch)batch).getTests();
+            if (tests.size() != 0) {
+              messageBuilder.append("\n\t[");
+              messageBuilder.append(Joiner.on(",").join(tests));
+              messageBuilder.append("]");
+            }
+          }
+          failedTests.add(messageBuilder.toString());
+        }
+      }
+    }
+  }
+
+  protected List<TestBatch> getTestBatches() {
+    List<TestBatch> testBatches = Lists.newArrayList();
+    for(TestBatch batch : testBatchSupplier.get()) {
+      testBatches.add(batch);
+      if(batch.isParallel()) {
+        parallelWorkQueue.add(batch);
+      } else {
+        isolatedWorkQueue.add(batch);
+      }
+    }
+    return testBatches;
   }
 
   public static final String TOTAL_RSYNC_TIME = "TotalRsyncElapsedTime";
