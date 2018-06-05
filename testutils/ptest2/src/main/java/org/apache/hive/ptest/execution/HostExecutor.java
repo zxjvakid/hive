@@ -59,19 +59,20 @@ public class HostExecutor {
   protected final Host mHost;
   private final List<Drone> mDrones;
   protected final ListeningExecutorService mExecutor;
-  private final SSHCommandExecutor mSSHCommandExecutor;
-  private final RSyncCommandExecutor mRSyncCommandExecutor;
+  protected final SSHCommandExecutor mSSHCommandExecutor;
+  protected final RSyncCommandExecutor mRSyncCommandExecutor;
   protected final ImmutableMap<String, String> mTemplateDefaults;
+  protected final String mPrivateKey;
   protected final Logger mLogger;
-  private final File mLocalScratchDirectory;
-  private final File mSuccessfulTestLogDir;
-  private final File mFailedTestLogDir;
+  protected final File mLocalScratchDirectory;
+  protected final File mSuccessfulTestLogDir;
+  protected final File mFailedTestLogDir;
   protected final long mNumPollSeconds;
-  private final boolean fetchLogsForSuccessfulTests;
+  protected final boolean fetchLogsForSuccessfulTests;
   protected volatile boolean mShutdown;
   protected int numParallelBatchesProcessed = 0;
   protected int numIsolatedBatchesProcessed = 0;
-  private AtomicLong totalElapsedTimeInRsync = new AtomicLong(0L);
+  protected AtomicLong totalElapsedTimeInRsync = new AtomicLong(0L);
   
   protected HostExecutor(Host host, String privateKey, ListeningExecutorService executor,
       SSHCommandExecutor sshCommandExecutor, RSyncCommandExecutor rsyncCommandExecutor,
@@ -85,6 +86,7 @@ public class HostExecutor {
     }
     mShutdown = false;
     mHost = host;
+    mPrivateKey = privateKey;
     mDrones = new CopyOnWriteArrayList<Drone>(drones);
     mExecutor = executor;
     mSSHCommandExecutor = sshCommandExecutor;

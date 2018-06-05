@@ -1,0 +1,12 @@
+diff --git a/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/PTest.java b/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/PTest.java
+index 2868ff0..6a6a5ff 100644
+--- a/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/PTest.java
++++ b/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/PTest.java
+@@ -69,6 +69,7 @@
+ 
+ public class PTest {
+ 
++  // test patching
+   static {
+     Velocity.init();
+   }

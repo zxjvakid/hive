@@ -1,3 +1,18 @@
+# Licensed to the Apache Software Foundation (ASF) under one or more
+# contributor license agreements.  See the NOTICE file distributed with
+# this work for additional information regarding copyright ownership.
+# The ASF licenses this file to You under the Apache License, Version 2.0
+# (the "License"); you may not use this file except in compliance with
+# the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 FROM centos
 
 RUN yum upgrade -y && \
@@ -6,10 +21,11 @@ RUN yum upgrade -y && \
 
 RUN useradd -m ptestuser
 RUN mkdir -p /home/ptestuser
-COPY smart-apply-patch.sh scratch/build.patch /home/ptestuser/scratch/
+COPY smart-apply-patch.sh copy-test-logs.sh scratch/build.patch /home/ptestuser/scratch/
 RUN chown -R ptestuser /home/ptestuser
 RUN chmod -R 755 /home/ptestuser
 RUN ls -l /home
+RUN cat /home/ptestuser/scratch/build.patch
 USER ptestuser
 RUN cd /home/ptestuser
 WORKDIR /home/ptestuser
@@ -17,15 +33,12 @@ ARG workingDir
 ARG mavenEnvOpts
 ARG repository
 ARG branch
-<<<<<<< HEAD
-ARG label
-=======
 ARG buildTag
->>>>>>> a1fe94a... Temp work related to docker execution phase. code may not compile
 
 RUN export MAVEN_OPTS="$mavenEnvOpts"
 RUN /usr/bin/git clone $repository
 RUN cd hive
+
 WORKDIR /home/ptestuser/hive
 RUN /usr/bin/git checkout $branch || checkout -b $branch origin/$branch
 RUN /usr/bin/git reset --hard origin/$branch
@@ -33,9 +46,5 @@ RUN /usr/bin/git merge --ff-only origin/$branch
 RUN /home/ptestuser/scratch/smart-apply-patch.sh /home/ptestuser/scratch/build.patch
 RUN /usr/bin/mvn -B -T 4 -q install -Dtest=TestMetastoreConf
 RUN cd itests
-RUN /usr/bin/mvn -B -T 4 -q  install -DskipSparkTests -DskipTests
-<<<<<<< HEAD
-RUN echo This build is labeled $label
-=======
+RUN /usr/bin/mvn -B -T 4 -q install -DskipSparkTests -DskipTests
 RUN echo This build is labeled $buildTag
->>>>>>> a1fe94a... Temp work related to docker execution phase. code may not compile

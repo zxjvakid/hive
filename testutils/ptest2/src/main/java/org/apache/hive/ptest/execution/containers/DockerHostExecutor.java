@@ -35,17 +35,22 @@ import org.apache.hive.ptest.execution.ContainerClientFactory;
 import org.apache.hive.ptest.execution.ContainerClientFactory.ContainerClientContext;
 import org.apache.hive.ptest.execution.ContainerClientFactory.ContainerType;
 import org.apache.hive.ptest.execution.Dirs;
+import org.apache.hive.ptest.execution.Drone;
 import org.apache.hive.ptest.execution.HostExecutor;
 import org.apache.hive.ptest.execution.Templates;
 import org.apache.hive.ptest.execution.conf.Host;
 import org.apache.hive.ptest.execution.conf.TestBatch;
+import org.apache.hive.ptest.execution.ssh.RSyncCommand;
 import org.apache.hive.ptest.execution.ssh.RSyncCommandExecutor;
+import org.apache.hive.ptest.execution.ssh.RSyncResult;
 import org.apache.hive.ptest.execution.ssh.RemoteCommandResult;
 import org.apache.hive.ptest.execution.ssh.SSHCommand;
 import org.apache.hive.ptest.execution.ssh.SSHCommandExecutor;
+import org.apache.hive.ptest.execution.ssh.SSHExecutionException;
 import org.slf4j.Logger;
 
 import java.io.File;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.List;
 import java.util.Map;
@@ -53,15 +58,16 @@ import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
-public class DockerHostExectutor extends HostExecutor {
+public class DockerHostExecutor extends HostExecutor {
   private final ContainerClientContext containerClientContext;
   private final ContainerClient dockerClient;
   private final int numParallelContainersPerHost;
-  private String containerName;
+  private AtomicInteger containerNameId = new AtomicInteger(0);
 
-  DockerHostExectutor(Host host, String privateKey, ListeningExecutorService executor,
+  DockerHostExecutor(Host host, String privateKey, ListeningExecutorService executor,
       SSHCommandExecutor sshCommandExecutor, RSyncCommandExecutor rsyncCommandExecutor,
       ImmutableMap<String, String> templateDefaults, File scratchDir, File succeededLogDir,
       File failedLogDir, long numPollSeconds, boolean fetchLogsForSuccessfulTests, Logger logger)
@@ -72,7 +78,7 @@ public class DockerHostExectutor extends HostExecutor {
     containerClientContext = new ContainerClientContext(logger, templateDefaults);
     dockerClient = ContainerClientFactory.get(ContainerType.DOCKER, containerClientContext);
     //TODO get this value from executionContext
-    numParallelContainersPerHost = 3;
+    numParallelContainersPerHost = 2;
   }
 
   @Override
@@ -85,7 +91,8 @@ public class DockerHostExectutor extends HostExecutor {
     }
     mLogger.info("Starting parallel execution on " + mHost.getName() + " using dockers");
     List<ListenableFuture<Void>> containerResults = Lists.newArrayList();
-    for(int containerId = 0; containerId < numParallelContainersPerHost; containerId++) {
+    for(int containerSlotId = 0; containerSlotId < numParallelContainersPerHost; containerSlotId++) {
+      final int finalContainerSlotId = containerSlotId;
       containerResults.add(mExecutor.submit(new Callable<Void>() {
         @Override
         public Void call() throws Exception {
@@ -102,7 +109,7 @@ public class DockerHostExectutor extends HostExecutor {
                 numParallelBatchesProcessed++;
                 sw.reset().start();
                 try {
-                  if (!executeTestBatch(batch, failedTestResults)) {
+                  if (!executeTestBatch(batch, finalContainerSlotId, failedTestResults)) {
                     failedTestResults.add(batch);
                   }
                 } finally {
@@ -130,19 +137,27 @@ public class DockerHostExectutor extends HostExecutor {
     Futures.allAsList(containerResults).get();
   }
 
-  private boolean executeTestBatch(TestBatch batch, Set<TestBatch> failedTestResults)
-      throws AbortContainerException {
-    String runCommand = dockerClient.getRunContainerCommand(getContainerName(), batch);
+  private boolean executeTestBatch(TestBatch batch, int containerSlotId, Set<TestBatch> failedTestResults)
+      throws AbortContainerException, IOException, SSHExecutionException {
+    final int containerInstanceId = containerNameId.getAndIncrement();
+    final String containerName = getContainerName(containerInstanceId);
+    String runCommand = dockerClient.getRunContainerCommand(containerName, batch);
     Stopwatch sw = Stopwatch.createStarted();
     mLogger.info("Executing " + batch + " with " + runCommand);
+    RemoteCommandResult sshResult = new SSHCommand(mSSHCommandExecutor, mPrivateKey, mHost.getUser(),
+        mHost.getName(), containerInstanceId, runCommand, true).
+        call();
     sw.stop();
-    /*mLogger.info("Completed executing tests for batch [{}] on host {}. ElapsedTime(ms)={}",
-        new Object[] { batch.getName(), getHost().toShortString(),
+    mLogger.info(
+        "Completed executing tests for batch [{}] on host {} using container instance {}. ElapsedTime(ms)={}",
+        new Object[] { batch.getName(), mHost.toShortString(), containerInstanceId,
             sw.elapsed(TimeUnit.MILLISECONDS) });
+
     File batchLogDir = null;
     if (sshResult.getExitCode() == Constants.EXIT_CODE_UNKNOWN) {
-      throw new AbortDroneException(
-          "Drone " + drone.toString() + " exited with " + Constants.EXIT_CODE_UNKNOWN + ": " + sshResult);
+      throw new AbortContainerException(
+          "Container " + containerInstanceId + " exited with " + Constants.EXIT_CODE_UNKNOWN + ": "
+              + sshResult);
     }
     if (mShutdown) {
       mLogger.warn("Shutting down host " + mHost.getName());
@@ -156,8 +171,21 @@ public class DockerHostExectutor extends HostExecutor {
       result = true;
       batchLogDir = Dirs.create(new File(mSuccessfulTestLogDir, batch.getName()));
     }
-    copyFromDroneToLocal(drone, batchLogDir.getAbsolutePath(), drone.getLocalLogDirectory() + "/",
-        fetchLogsForSuccessfulTests || !result);
+    String copyLogsCommand = dockerClient.getCopyTestLogsCommand(containerName,"/home/ptestuser/scratch/");
+    sw = Stopwatch.createStarted();
+    mLogger.info("Copying logs for the " + batch + " with " + runCommand);
+    sshResult = new SSHCommand(mSSHCommandExecutor, mPrivateKey, mHost.getUser(),
+        mHost.getName(), containerInstanceId, copyLogsCommand, true).
+        call();
+    sw.stop();
+    mLogger.info(
+        "Completed copying logs for batch [{}] on host {} using container instance {}. ElapsedTime(ms)={}",
+        new Object[] { batch.getName(), mHost.toShortString(), containerInstanceId,
+            sw.elapsed(TimeUnit.MILLISECONDS) });
+
+    //Copy log files from the container to Ptest server
+    copyFromContainerHostToLocal(containerInstanceId, batchLogDir.getAbsolutePath(),
+        mHost.getLocalDirectories()[containerSlotId] + "/", fetchLogsForSuccessfulTests || !result);
     File logFile = new File(batchLogDir, String.format("%s.txt", batch.getName()));
     PrintWriter writer = new PrintWriter(logFile);
     writer.write(String.format("result = '%s'\n", sshResult.toString()));
@@ -165,13 +193,41 @@ public class DockerHostExectutor extends HostExecutor {
     if (sshResult.getException() != null) {
       sshResult.getException().printStackTrace(writer);
     }
-    writer.close();*/
-    return false;
+    writer.close();
+    //TODO add code to shutdown the container and delete it
+    String stopContainerCommand = dockerClient.getStopContainerCommand(containerName);
+    sw = Stopwatch.createStarted();
+    mLogger.info("Stopping container " + containerName + " with " + stopContainerCommand);
+    sshResult = new SSHCommand(mSSHCommandExecutor, mPrivateKey, mHost.getUser(),
+        mHost.getName(), containerInstanceId, stopContainerCommand, true).
+        call();
+    sw.stop();
+    if (sshResult.getExitCode() != 0 || sshResult.getException() != null) {
+      throw new AbortContainerException("Could not stop container after test execution");
+    }
+    return true;
   }
 
-  AtomicLong containerNameId = new AtomicLong(1);
-  public String getContainerName() {
+  public String getContainerName(int containerInstanceId) {
     return mHost.getName() + "-" + mTemplateDefaults.get("buildTag") + "-" + String
-        .valueOf(containerNameId.getAndIncrement());
+        .valueOf(containerInstanceId);
+  }
+
+  RSyncResult copyFromContainerHostToLocal(int containerInstanceId, String localFile, String remoteFile, boolean fetchAllLogs)
+      throws SSHExecutionException, IOException {
+    Map<String, String> templateVariables = Maps.newHashMap(mTemplateDefaults);
+    //TODO do we need this here?
+    //templateVariables.put("instanceName", drone.getInstanceName());
+    //templateVariables.put("localDir", drone.getLocalDirectory());
+    RSyncResult result = new RSyncCommand(mRSyncCommandExecutor, mPrivateKey, mHost.getUser(),
+        mHost.getName(), containerInstanceId,
+        Templates.getTemplateResult(localFile, templateVariables),
+        Templates.getTemplateResult(remoteFile, templateVariables),
+        fetchAllLogs ? RSyncCommand.Type.TO_LOCAL : RSyncCommand.Type.TO_LOCAL_NON_RECURSIVE).call();
+    if(result.getException() != null || result.getExitCode() != Constants.EXIT_CODE_SUCCESS) {
+      throw new SSHExecutionException(result);
+    }
+    totalElapsedTimeInRsync.getAndAdd(result.getElapsedTimeInMs());
+    return result;
   }
 }

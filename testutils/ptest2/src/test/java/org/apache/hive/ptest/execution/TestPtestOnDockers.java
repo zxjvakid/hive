@@ -39,6 +39,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.net.URL;
 import java.util.concurrent.Executors;
 
 import static org.mockito.Mockito.mock;
@@ -76,11 +77,12 @@ public class TestPtestOnDockers {
   private static final int INSTANCE = 13;
   private static final String INSTANCE_NAME = HOST + "-" + USER + "-" + INSTANCE;
   private static final String REAL_BRANCH = "master";
-  private static final String REAL_REPOSITORY = "https://git-wip-us.apache.org/repos/asf/hive.git";
+  private static final String REAL_REPOSITORY = "https://github.com/apache/hive.git";
   private static final String REAL_REPOSITORY_NAME = "apache-hive";
   private static final String REAL_MAVEN_OPTS = "-Xmx1g";
   private MockSSHCommandExecutor sshCommandExecutor;
   private MockRSyncCommandExecutor rsyncCommandExecutor;
+  private static final String BUILD_TAG = "docker-ptest-tag";
 
   public void initialize(String name) throws Exception {
     baseDir = AbstractTestPhase.createBaseDir(name);
@@ -97,6 +99,7 @@ public class TestPtestOnDockers {
     rsyncCommandExecutor = spy(new MockRSyncCommandExecutor(logger));
     templateDefaults = ImmutableMap.<String, String>builder()
         .put("localDir", LOCAL_DIR)
+        .put("buildTag", BUILD_TAG)
         //use baseDir as working directory
         .put("workingDir", baseDir.getAbsolutePath())
         .put("instanceName", INSTANCE_NAME)
@@ -111,9 +114,9 @@ public class TestPtestOnDockers {
 
   @BeforeClass
   public static void beforeClass() throws Exception {
-    dummyPatchFile = File.createTempFile("dummy", "patch");
-    dummyPatchFile.deleteOnExit();
-    Assert.assertTrue("Could not create dummy patch file " + dummyPatchFile.getAbsolutePath(),
+    URL url = TestPtestOnDockers.class.getResource("/DUMMY-001.patch");
+    dummyPatchFile = new File(url.getFile());
+    Assert.assertTrue("Could not find dummy patch file " + dummyPatchFile.getAbsolutePath(),
         dummyPatchFile.exists());
   }
 
@@ -135,7 +138,7 @@ public class TestPtestOnDockers {
   @After
   public void teardown() {
     phase = null;
-    FileUtils.deleteQuietly(baseDir);
+    //FileUtils.deleteQuietly(baseDir);
   }
 
   /**

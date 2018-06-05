@@ -19,24 +19,17 @@
 
 package org.apache.hive.ptest.execution;
 
-import org.apache.hive.ptest.execution.ContainerClientFactory.ContainerClientContext;
-<<<<<<< HEAD
-=======
 import org.apache.hive.ptest.execution.conf.TestBatch;
->>>>>>> a1fe94a... Temp work related to docker execution phase. code may not compile
 
-import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
 public interface ContainerClient {
-<<<<<<< HEAD
-  void defineImage(String dir, String label) throws IOException;
-  String getBuildCommand(String dir, long toWait, TimeUnit unit)
-      throws Exception;
-=======
   void defineImage(String dir) throws Exception;
   String getBuildCommand(String dir, long toWait, TimeUnit unit)
       throws Exception;
   String getRunContainerCommand(String containerName, TestBatch testBatch);
->>>>>>> a1fe94a... Temp work related to docker execution phase. code may not compile
+
+  String getCopyTestLogsCommand(String containerName, String dir);
+
+  String getStopContainerCommand(String containerName);
 }

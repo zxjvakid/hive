@@ -69,6 +69,7 @@ import com.google.common.util.concurrent.MoreExecutors;
 
 public class PTest {
 
+  // test patching
   static {
     Velocity.init();
   }

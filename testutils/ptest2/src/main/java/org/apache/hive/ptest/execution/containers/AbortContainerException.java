@@ -20,4 +20,7 @@
 package org.apache.hive.ptest.execution.containers;
 
 public class AbortContainerException extends Exception {
+  public AbortContainerException(String msg) {
+    super(msg);
+  }
 }
