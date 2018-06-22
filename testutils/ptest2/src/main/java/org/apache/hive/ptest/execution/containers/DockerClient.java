@@ -85,8 +85,9 @@ public class DockerClient implements ContainerClient {
   }
 
   @Override
-  public String getRunContainerCommand(String containerName, TestBatch batch) {
+  public String getRunContainerCommand(String containerName, final String imageTag, TestBatch batch) {
     return new StringBuilder("docker run")
+        .append(" -t " + imageTag)
         .append(" --name " + containerName)
         .append(" " + imageName())
         .append(" /bin/bash")

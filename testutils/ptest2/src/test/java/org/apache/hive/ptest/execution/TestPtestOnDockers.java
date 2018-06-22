@@ -19,14 +19,19 @@
 
 package org.apache.hive.ptest.execution;
 
+import com.google.common.base.Suppliers;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
 import org.apache.hive.ptest.execution.LocalCommand.CollectLogPolicy;
 import org.apache.hive.ptest.execution.conf.Host;
+import org.apache.hive.ptest.execution.conf.QFileTestBatch;
 import org.apache.hive.ptest.execution.conf.TestBatch;
+import org.apache.hive.ptest.execution.conf.UnitTestBatch;
 import org.apache.hive.ptest.execution.containers.DockerExecutionPhase;
+import org.apache.hive.ptest.execution.containers.DockerHostExecutor;
 import org.apache.hive.ptest.execution.containers.DockerPrepPhase;
 import org.apache.hive.ptest.execution.containers.TestDockerPrepPhase;
 import org.apache.hive.ptest.execution.context.ExecutionContext;
@@ -41,7 +46,14 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
@@ -55,7 +67,7 @@ public class TestPtestOnDockers {
   private DockerPrepPhase prepPhase;
   private DockerExecutionPhase execPhase;
   private static File dummyPatchFile;
-  private static final Logger logger = LoggerFactory.getLogger(TestDockerPrepPhase.class);
+  private static final Logger logger = LoggerFactory.getLogger(TestPtestOnDockers.class);
 
   private File baseDir;
   private File scratchDir;
@@ -85,6 +97,9 @@ public class TestPtestOnDockers {
   private MockSSHCommandExecutor sshCommandExecutor;
   private MockRSyncCommandExecutor rsyncCommandExecutor;
   private static final String BUILD_TAG = "docker-ptest-tag";
+  private final Set<String> executedTests = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+  private final Set<String> failedTests = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
+  private List<TestBatch> testBatches;
 
   public void initialize(String name) throws Exception {
     baseDir = AbstractTestPhase.createBaseDir(name);
@@ -128,15 +143,23 @@ public class TestPtestOnDockers {
     createHostExecutor();
     prepPhase = new DockerPrepPhase(hostExecutors, localCommandFactory,
         templateDefaults, baseDir, dummyPatchFile, logger);
-    /*execPhase = new DockerExecutionPhase(hostExecutors, executionContext,
+    createTestBatches();
+    execPhase = new DockerExecutionPhase(hostExecutors, executionContext,
         hostExecutorBuilder, localCommandFactory,
         templateDefaults, succeededLogDir, failedLogDir,
-        testBatchSupplier, executedTests,
-        failedTests, logger);*/
+        Suppliers.ofInstance(testBatches), executedTests,
+        failedTests, logger);
   }
 
-  private void createHostExecutor() {
-    hostExecutor = new HostExecutor(host, PRIVATE_KEY, executor, sshCommandExecutor,
+  private void createTestBatches() throws Exception {
+    testBatches = new ArrayList<>();
+    TestBatch qfileTestBatch = new QFileTestBatch(new AtomicInteger(1), "", "TestCliDriver", "",
+        Sets.newHashSet("insert0.q"), true, "itests/qtest");
+    testBatches.add(qfileTestBatch);
+  }
+
+  private void createHostExecutor() throws Exception {
+    hostExecutor = new DockerHostExecutor(host, PRIVATE_KEY, executor, sshCommandExecutor,
         rsyncCommandExecutor, templateDefaults, scratchDir, succeededLogDir, failedLogDir, 1, true,
         logger);
     hostExecutors = ImmutableList.of(hostExecutor);
@@ -153,10 +176,15 @@ public class TestPtestOnDockers {
    * @throws Exception
    */
   @Test
-  public void testDockerFile() throws Exception {
+  public void testDockerFile() throws Throwable {
     prepPhase.execute();
     Assert.assertNotNull("Scratch directory needs to be set", prepPhase.getLocalScratchDir());
     File dockerFile = new File(prepPhase.getLocalScratchDir(), "Dockerfile");
     Assert.assertTrue("Docker file not found", dockerFile.exists());
+  }
+
+  @Test
+  public void testDockerExecutionPhase() throws Throwable {
+    execPhase.execute();
   }
 }

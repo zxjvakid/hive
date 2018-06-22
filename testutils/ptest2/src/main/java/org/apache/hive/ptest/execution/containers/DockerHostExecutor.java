@@ -67,7 +67,7 @@ public class DockerHostExecutor extends HostExecutor {
   private final int numParallelContainersPerHost;
   private AtomicInteger containerNameId = new AtomicInteger(0);
 
-  DockerHostExecutor(Host host, String privateKey, ListeningExecutorService executor,
+  public DockerHostExecutor(Host host, String privateKey, ListeningExecutorService executor,
       SSHCommandExecutor sshCommandExecutor, RSyncCommandExecutor rsyncCommandExecutor,
       ImmutableMap<String, String> templateDefaults, File scratchDir, File succeededLogDir,
       File failedLogDir, long numPollSeconds, boolean fetchLogsForSuccessfulTests, Logger logger)
@@ -141,7 +141,7 @@ public class DockerHostExecutor extends HostExecutor {
       throws AbortContainerException, IOException, SSHExecutionException {
     final int containerInstanceId = containerNameId.getAndIncrement();
     final String containerName = getContainerName(containerInstanceId);
-    String runCommand = dockerClient.getRunContainerCommand(containerName, batch);
+    String runCommand = dockerClient.getRunContainerCommand(containerName, mTemplateDefaults.get("buildTag"), batch);
     Stopwatch sw = Stopwatch.createStarted();
     mLogger.info("Executing " + batch + " with " + runCommand);
     RemoteCommandResult sshResult = new SSHCommand(mSSHCommandExecutor, mPrivateKey, mHost.getUser(),
