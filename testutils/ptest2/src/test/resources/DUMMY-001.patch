@@ -1,12 +1,30 @@
-diff --git a/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/PTest.java b/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/PTest.java
-index 2868ff0..6a6a5ff 100644
---- a/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/PTest.java
-+++ b/testutils/ptest2/src/main/java/org/apache/hive/ptest/execution/PTest.java
-@@ -69,6 +69,7 @@
+diff --git a/ql/src/java/org/apache/hadoop/hive/ql/io/orc/encoded/EncodedReaderImpl.java b/ql/src/java/org/apache/hadoop/hive/ql/io/orc/encoded/EncodedReaderImpl.java
+index 1d7eceb1ef380fdb6f62d8b831b1e2bd23333c67..b78e7b2bef78b99a3cab9cc89bd8551649285417 100644
+--- a/ql/src/java/org/apache/hadoop/hive/ql/io/orc/encoded/EncodedReaderImpl.java
++++ b/ql/src/java/org/apache/hadoop/hive/ql/io/orc/encoded/EncodedReaderImpl.java
+@@ -68,9 +68,7 @@
  
- public class PTest {
+ import com.google.common.annotations.VisibleForTesting;
+ import com.google.protobuf.CodedInputStream;
+-
+-import sun.misc.Cleaner;
+-
++//import sun.misc.Cleaner;
  
-+  // test patching
-   static {
-     Velocity.init();
-   }
+ /**
+  * Encoded reader implementation.
+@@ -1654,12 +1652,12 @@ private void releaseBuffer(ByteBuffer bb, boolean isFromDataReader) {
+     Field localCf = cleanerField;
+     if (!bb.isDirect() || localCf == null) return;
+     try {
+-      Cleaner cleaner = (Cleaner) localCf.get(bb);
++      /*Cleaner cleaner = (Cleaner) localCf.get(bb);
+       if (cleaner != null) {
+         cleaner.clean();
+       } else {
+         LOG.debug("Unable to clean a buffer using cleaner - no cleaner");
+-      }
++      }*/
+     } catch (Exception e) {
+       // leave it for GC to clean up
+       LOG.warn("Unable to clean direct buffers using Cleaner.");

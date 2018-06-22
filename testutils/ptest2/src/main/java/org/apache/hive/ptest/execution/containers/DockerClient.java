@@ -64,6 +64,8 @@ public class DockerClient implements ContainerClient {
     logger.info("Building image");
     String dockerBuildCommand =
         new StringBuilder("docker build")
+            .append(" --memory " + "2g")
+            .append(" --memory-swap " + "-1")
             .append(" --tag " + imageName())
             .append(" --build-arg ")
             .append(" workingDir=$workingDir")

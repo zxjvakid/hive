@@ -23,9 +23,10 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
-import org.apache.commons.io.FileUtils;
 import org.apache.hive.ptest.execution.LocalCommand.CollectLogPolicy;
 import org.apache.hive.ptest.execution.conf.Host;
+import org.apache.hive.ptest.execution.conf.TestBatch;
+import org.apache.hive.ptest.execution.containers.DockerExecutionPhase;
 import org.apache.hive.ptest.execution.containers.DockerPrepPhase;
 import org.apache.hive.ptest.execution.containers.TestDockerPrepPhase;
 import org.apache.hive.ptest.execution.context.ExecutionContext;
@@ -51,7 +52,8 @@ import static org.mockito.Mockito.spy;
 public class TestPtestOnDockers {
   //TODO add logic to ignore this test if docker is not found on the machine
 
-  private DockerPrepPhase phase;
+  private DockerPrepPhase prepPhase;
+  private DockerExecutionPhase execPhase;
   private static File dummyPatchFile;
   private static final Logger logger = LoggerFactory.getLogger(TestDockerPrepPhase.class);
 
@@ -79,7 +81,7 @@ public class TestPtestOnDockers {
   private static final String REAL_BRANCH = "master";
   private static final String REAL_REPOSITORY = "https://github.com/apache/hive.git";
   private static final String REAL_REPOSITORY_NAME = "apache-hive";
-  private static final String REAL_MAVEN_OPTS = "-Xmx1g";
+  private static final String REAL_MAVEN_OPTS = "-Xmx2048m";
   private MockSSHCommandExecutor sshCommandExecutor;
   private MockRSyncCommandExecutor rsyncCommandExecutor;
   private static final String BUILD_TAG = "docker-ptest-tag";
@@ -124,8 +126,13 @@ public class TestPtestOnDockers {
   public void setup() throws Exception {
     initialize(getClass().getSimpleName());
     createHostExecutor();
-    phase = new DockerPrepPhase(hostExecutors, localCommandFactory,
+    prepPhase = new DockerPrepPhase(hostExecutors, localCommandFactory,
         templateDefaults, baseDir, dummyPatchFile, logger);
+    /*execPhase = new DockerExecutionPhase(hostExecutors, executionContext,
+        hostExecutorBuilder, localCommandFactory,
+        templateDefaults, succeededLogDir, failedLogDir,
+        testBatchSupplier, executedTests,
+        failedTests, logger);*/
   }
 
   private void createHostExecutor() {
@@ -137,7 +144,7 @@ public class TestPtestOnDockers {
 
   @After
   public void teardown() {
-    phase = null;
+    prepPhase = null;
     //FileUtils.deleteQuietly(baseDir);
   }
 
@@ -147,18 +154,9 @@ public class TestPtestOnDockers {
    */
   @Test
   public void testDockerFile() throws Exception {
-    phase.execute();
-    File dockerFile = new File(scratchDir, "Dockerfile");
-    Assert.assertTrue("Docker file was not found" , dockerFile.exists());
-    Assert.assertTrue("patch file not found", new File(scratchDir, "build.patch").exists());
-    LocalCommandFactory localCommandFactory = new LocalCommandFactory(logger);
-    CollectLogPolicy localCollector = new CollectLogPolicy(logger);
-    localCommandFactory.create(localCollector, "cp -f " + dockerFile.getAbsolutePath() + " /tmp/myDockerFile");
-    LocalCommand localCmd = localCommandFactory.create(localCollector, phase.getDockerBuildCommand());
-    if(localCmd.getExitCode() != 0) {
-      throw new NonZeroExitCodeException(String.format(
-          "Command '%s' failed with exit status %d and output '%s'",
-          localCmd, localCmd.getExitCode(), localCollector.getOutput()));
-    }
+    prepPhase.execute();
+    Assert.assertNotNull("Scratch directory needs to be set", prepPhase.getLocalScratchDir());
+    File dockerFile = new File(prepPhase.getLocalScratchDir(), "Dockerfile");
+    Assert.assertTrue("Docker file not found", dockerFile.exists());
   }
 }

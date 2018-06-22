@@ -58,11 +58,11 @@ public class DockerPrepPhase extends PrepPhase {
     execLocally(getDockerBuildCommand());
     elapsedTime = TimeUnit.MINUTES.convert((System.currentTimeMillis() - start),
         TimeUnit.MILLISECONDS);
-    logger.info("PERF: Docker source prep took " + elapsedTime + " minutes");
+    logger.info("PERF: Docker build image took " + elapsedTime + " minutes");
   }
 
   @VisibleForTesting
-  String getLocalScratchDir() {
+  public String getLocalScratchDir() {
     return mScratchDir.getAbsolutePath();
   }
 
