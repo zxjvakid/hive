@@ -85,41 +85,46 @@ public class DockerClient implements ContainerClient {
   }
 
   @Override
-  public String getRunContainerCommand(String containerName, final String imageTag, TestBatch batch) {
-    return new StringBuilder("docker run")
-        .append(" -t " + imageTag)
+  public String getRunContainerCommand(String containerName, TestBatch batch) {
+    return new StringBuilder("/usr/local/bin/docker run")
+        .append(" --memory " + "2G")
         .append(" --name " + containerName)
-        .append(" " + imageName())
+        //.append(" -d")
+        .append(" -t " + imageName())
         .append(" /bin/bash")
         .append(" -c")
-        .append("( cd " + batch.getTestModuleRelativeDir() + "; ")
-        .append("/usr/bin/mvn")
-        .append(" -Dsurefire.timeout=40m")
+        .append(" \"cd " + batch.getTestModuleRelativeDir() + ";")
+        .append(" /usr/bin/mvn")
+        .append(" -Dsurefire.timeout=2400")
         .append(" -B test")
         .append(" " + batch.getTestArguments())
-        .append(" 1>$workingDir/logs"  + File.separatorChar + "maven.txt")
-        .append(" 2>&1")
+        .append(
+            " 1>" + File.separatorChar + "/tmp" + File.separatorChar + "maven.txt")
+        .append(" 2>&1 ;")
+        .append(
+            " /bin/bash /home/ptestuser/scratch/copy-test-logs.sh 1>" + File.separatorChar + "tmp"
+                + File.separatorChar + "copy-test-logs.txt 2>&1; \"")
         .toString();
   }
 
   @Override
   public String getCopyTestLogsCommand(String containerName, String dir) {
-    return new StringBuilder("docker run")
-        .append(" --name " + containerName)
-        .append(" " + imageName())
-        .append(" /bin/bash")
-        .append(" -c")
-        .append("( cd " + dir + "; ")
-        .append("bash")
-        .append(" copy-test-logs.sh")
-        .append(" 1>$workingDir/logs"  + File.separatorChar + "copy-test-logs.txt")
-        .append(" 2>&1")
+    String containerLogDir = context.getTemplateDefaults().get("containerLogDir");
+    //TODO get path for docker executable from context
+    return new StringBuilder("/usr/local/bin/docker cp")
+        .append(" " + containerName + ":" + containerLogDir)
+        .append(" " + dir)
         .toString();
   }
 
   @Override
-  public String getStopContainerCommand(String containerName) {
-    return new StringBuilder("docker stop " + containerName).toString();
+  public String getStopContainerCommand(String containerName, boolean forceRemove) {
+    //TODO get path for docker executable from context
+    StringBuilder ret = new StringBuilder("/usr/local/bin/docker stop " + containerName);
+    if (forceRemove) {
+      ret.append("; /usr/local/bin/docker rm " + containerName);
+    }
+    return ret.toString();
   }
 
   private String imageName() {

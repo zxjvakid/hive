@@ -22,19 +22,19 @@ ps -e -o pid,pgrp,user,args
 ps x -o  "%p %r %y %x %c "
 
 date +"%Y-%m-%d %T.%3N"
-mkdir ${logDir}/logs
+mkdir -p ${containerLogDir}
 cd /home/ptestuser/hive
 find ./ -type f -name 'TEST-*.xml' | \
-xargs -I {} sh -c 'f=TEST-${batchName}-$(basename {}); test -f ${logDir}/$f && f=$f-$(uuidgen); mv {} ${logDir}/$f'
+xargs -I {} sh -c 'f=TEST-${batchName}-$(basename {}); test -f ${containerLogDir}/$f && f=$f-$(uuidgen); mv {} ${containerLogDir}/$f'
 find ./ -type f -name hive.log -o -name spark.log -o -name derby.log | \
-xargs -I {} sh -c 'f=$(basename {}); test -f ${logDir}/logs/$f && f=$f-$(uuidgen); mv {} ${logDir}/logs/$f'
+xargs -I {} sh -c 'f=$(basename {}); test -f ${containerLogDir}/logs/$f && f=$f-$(uuidgen); mv {} ${containerLogDir}/logs/$f'
 find ./ -path "*/spark/work" | \
-xargs -I {} sh -c 'mv {} ${logDir}/logs/spark-log'
+xargs -I {} sh -c 'mv {} ${containerLogDir}/logs/spark-log'
 find ./ -type f -name 'syslog*' | \
-xargs -I {} sh -c 'mkdir -p ${logDir}/logs/syslogs; mv {} ${logDir}/logs/syslogs'
+xargs -I {} sh -c 'mkdir -p ${containerLogDir}/logs/syslogs; mv {} ${containerLogDir}/logs/syslogs'
 date +"%Y-%m-%d %T.%3N"
 
-if [[ -f $logDir/.log ]]
+if [[ -f $containerLogDir/.log ]]
 then
-mv $logDir/.log $logDir/logs/dot.log
+mv $containerLogDir/.log $containerLogDir/logs/dot.log
 fi

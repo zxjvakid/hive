@@ -27,9 +27,9 @@ public interface ContainerClient {
   void defineImage(String dir) throws Exception;
   String getBuildCommand(String dir, long toWait, TimeUnit unit)
       throws Exception;
-  String getRunContainerCommand(String containerName, final String imageTag, TestBatch testBatch);
+  String getRunContainerCommand(String containerName, TestBatch testBatch);
 
   String getCopyTestLogsCommand(String containerName, String dir);
 
-  String getStopContainerCommand(String containerName);
+  String getStopContainerCommand(String containerName, boolean forceRemove);
 }

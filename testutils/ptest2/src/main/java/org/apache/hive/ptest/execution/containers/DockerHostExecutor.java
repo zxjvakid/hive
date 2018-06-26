@@ -141,7 +141,7 @@ public class DockerHostExecutor extends HostExecutor {
       throws AbortContainerException, IOException, SSHExecutionException {
     final int containerInstanceId = containerNameId.getAndIncrement();
     final String containerName = getContainerName(containerInstanceId);
-    String runCommand = dockerClient.getRunContainerCommand(containerName, mTemplateDefaults.get("buildTag"), batch);
+    String runCommand = dockerClient.getRunContainerCommand(containerName, batch);
     Stopwatch sw = Stopwatch.createStarted();
     mLogger.info("Executing " + batch + " with " + runCommand);
     RemoteCommandResult sshResult = new SSHCommand(mSSHCommandExecutor, mPrivateKey, mHost.getUser(),
@@ -165,27 +165,33 @@ public class DockerHostExecutor extends HostExecutor {
     }
     boolean result;
     if (sshResult.getExitCode() != 0 || sshResult.getException() != null) {
+      mLogger.debug(sshResult.getOutput());
       result = false;
       batchLogDir = Dirs.create(new File(mFailedTestLogDir, batch.getName()));
     } else {
       result = true;
       batchLogDir = Dirs.create(new File(mSuccessfulTestLogDir, batch.getName()));
     }
-    String copyLogsCommand = dockerClient.getCopyTestLogsCommand(containerName,"/home/ptestuser/scratch/");
+    String copyLogsCommand = dockerClient.getCopyTestLogsCommand(containerName, batchLogDir.getAbsolutePath());
     sw = Stopwatch.createStarted();
-    mLogger.info("Copying logs for the " + batch + " with " + runCommand);
+    mLogger.info("Copying logs for the " + batch + " with " + copyLogsCommand);
     sshResult = new SSHCommand(mSSHCommandExecutor, mPrivateKey, mHost.getUser(),
         mHost.getName(), containerInstanceId, copyLogsCommand, true).
         call();
     sw.stop();
-    mLogger.info(
-        "Completed copying logs for batch [{}] on host {} using container instance {}. ElapsedTime(ms)={}",
-        new Object[] { batch.getName(), mHost.toShortString(), containerInstanceId,
-            sw.elapsed(TimeUnit.MILLISECONDS) });
+    if (sshResult.getExitCode() != 0 || sshResult.getException() != null) {
+      mLogger.error("Could not copy logs for batch [{}] on host {} using container instance {}. ElapsedTime(ms)={}",
+          new Object[] { batch.getName(), mHost.toShortString(), containerInstanceId,
+              sw.elapsed(TimeUnit.MILLISECONDS) });
+      //TODO do we need to throw error?
+      //throw new AbortContainerException("Could not stop container after test execution");
+    } else {
+      mLogger.info(
+          "Completed copying logs for batch [{}] on host {} using container instance {}. ElapsedTime(ms)={}",
+          new Object[] { batch.getName(), mHost.toShortString(), containerInstanceId,
+              sw.elapsed(TimeUnit.MILLISECONDS) });
+    }
 
-    //Copy log files from the container to Ptest server
-    copyFromContainerHostToLocal(containerInstanceId, batchLogDir.getAbsolutePath(),
-        mHost.getLocalDirectories()[containerSlotId] + "/", fetchLogsForSuccessfulTests || !result);
     File logFile = new File(batchLogDir, String.format("%s.txt", batch.getName()));
     PrintWriter writer = new PrintWriter(logFile);
     writer.write(String.format("result = '%s'\n", sshResult.toString()));
@@ -194,8 +200,14 @@ public class DockerHostExecutor extends HostExecutor {
       sshResult.getException().printStackTrace(writer);
     }
     writer.close();
+
+    //Copy log files from the container to Ptest server
+    //TODO original code had String[] for localDirectories
+    copyFromContainerHostToLocal(containerInstanceId, batchLogDir.getAbsolutePath(),
+        mHost.getLocalDirectories()[0] + "/", fetchLogsForSuccessfulTests || !result);
+
     //TODO add code to shutdown the container and delete it
-    String stopContainerCommand = dockerClient.getStopContainerCommand(containerName);
+    String stopContainerCommand = dockerClient.getStopContainerCommand(containerName, true);
     sw = Stopwatch.createStarted();
     mLogger.info("Stopping container " + containerName + " with " + stopContainerCommand);
     sshResult = new SSHCommand(mSSHCommandExecutor, mPrivateKey, mHost.getUser(),

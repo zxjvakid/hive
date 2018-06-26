@@ -1,0 +1,51 @@
+commit 47f76b3dac1b21d106051ab145f85932a3e0aa78
+Author: Vihang Karajgaonkar <vihang@cloudera.com>
+Date:   Mon Jun 25 17:27:55 2018 -0700
+
+    fake tests
+
+diff --git a/ql/src/test/queries/clientpositive/dummy_failing_test.q b/ql/src/test/queries/clientpositive/dummy_failing_test.q
+new file mode 100644
+index 0000000000000000000000000000000000000000..8d5b53aacb6fc1339164104f0123cbaabc4a06e0
+--- /dev/null
++++ b/ql/src/test/queries/clientpositive/dummy_failing_test.q
+@@ -0,0 +1,2 @@
++-! qt:dataset:src
++select * from table_not_exists limit 1;
+diff --git a/service/src/test/org/apache/hive/service/TestFakeFailure.java b/service/src/test/org/apache/hive/service/TestFakeFailure.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..7b5a7ba9cd680a31dbb60adb7823e032881c5120
+--- /dev/null
++++ b/service/src/test/org/apache/hive/service/TestFakeFailure.java
+@@ -0,0 +1,31 @@
++/*
++ *
++ *  Licensed to the Apache Software Foundation (ASF) under one
++ *  or more contributor license agreements.  See the NOTICE file
++ *  distributed with this work for additional information
++ *  regarding copyright ownership.  The ASF licenses this file
++ *  to you under the Apache License, Version 2.0 (the
++ *  "License"); you may not use this file except in compliance
++ *  with the License.  You may obtain a copy of the License at
++ *
++ *       http://www.apache.org/licenses/LICENSE-2.0
++ *
++ *  Unless required by applicable law or agreed to in writing, software
++ *  distributed under the License is distributed on an "AS IS" BASIS,
++ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ *  See the License for the specific language governing permissions and
++ *  limitations under the License.
++ */
++
++package org.apache.hive.service;
++
++import org.junit.Assert;
++import org.junit.Test;
++
++public class TestFakeFailure {
++  @Test
++  public void fakeTest() {
++    Assert.assertTrue("Something gotta be seriously wrong if this test didn't work",
++        1 == 2);
++  }
++}

@@ -19,12 +19,16 @@
 
 package org.apache.hive.ptest.execution;
 
+import com.google.common.base.Splitter;
 import com.google.common.base.Suppliers;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import org.apache.hive.ptest.execution.LocalCommand.CollectLogPolicy;
 import org.apache.hive.ptest.execution.conf.Host;
 import org.apache.hive.ptest.execution.conf.QFileTestBatch;
@@ -36,6 +40,9 @@ import org.apache.hive.ptest.execution.containers.DockerPrepPhase;
 import org.apache.hive.ptest.execution.containers.TestDockerPrepPhase;
 import org.apache.hive.ptest.execution.context.ExecutionContext;
 import org.apache.hive.ptest.execution.ssh.NonZeroExitCodeException;
+import org.apache.hive.ptest.execution.ssh.SSHCommand;
+import org.apache.hive.ptest.execution.ssh.SSHCommandExecutor;
+import org.apache.hive.ptest.execution.ssh.TestSSHCommandExecutor;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -49,7 +56,10 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
@@ -64,6 +74,47 @@ import static org.mockito.Mockito.spy;
 public class TestPtestOnDockers {
   //TODO add logic to ignore this test if docker is not found on the machine
 
+  private static class TestSSHCommandExecutor extends SSHCommandExecutor {
+    private final List<String> mCommands;
+    private final Map<String, Queue<Integer>> mFailures;
+    private final AtomicInteger matchCount = new AtomicInteger(0);
+    public TestSSHCommandExecutor(Logger logger) {
+      super(logger);
+      mCommands = Lists.newArrayList();
+      mFailures = Maps.newHashMap();
+    }
+    public synchronized List<String> getCommands() {
+      return mCommands;
+    }
+    public synchronized void putFailure(String command, Integer... exitCodes) {
+      Queue<Integer> queue = mFailures.get(command);
+      if(queue == null) {
+        queue = new LinkedList<Integer>();
+        mFailures.put(command, queue);
+      } else {
+        queue = mFailures.get(command);
+      }
+      for(Integer exitCode : exitCodes) {
+        queue.add(exitCode);
+      }
+    }
+    @Override
+    public synchronized void execute(SSHCommand command) {
+      mCommands.add(command.getCommand());
+      command.setOutput("");
+      Queue<Integer> queue = mFailures.get(command.getCommand());
+      if(queue == null || queue.isEmpty()) {
+        command.setExitCode(0);
+      } else {
+        matchCount.incrementAndGet();
+        command.setExitCode(queue.remove());
+      }
+    }
+
+    public int getMatchCount() {
+      return matchCount.get();
+    }
+  }
   private DockerPrepPhase prepPhase;
   private DockerExecutionPhase execPhase;
   private static File dummyPatchFile;
@@ -85,16 +136,16 @@ public class TestPtestOnDockers {
   private Host host;
 
   private static final String LOCAL_DIR = "/some/local/dir";
-  private static final String PRIVATE_KEY = "some.private.key";
-  private static final String USER = "someuser";
-  private static final String HOST = "somehost";
+  private static final String PRIVATE_KEY = "~/.ssh/id_rsa";
+  private static final String USER = "vihang";
+  private static final String HOST = "localhost";
   private static final int INSTANCE = 13;
   private static final String INSTANCE_NAME = HOST + "-" + USER + "-" + INSTANCE;
   private static final String REAL_BRANCH = "master";
   private static final String REAL_REPOSITORY = "https://github.com/apache/hive.git";
   private static final String REAL_REPOSITORY_NAME = "apache-hive";
   private static final String REAL_MAVEN_OPTS = "-Xmx2048m";
-  private MockSSHCommandExecutor sshCommandExecutor;
+  private SSHCommandExecutor sshCommandExecutor;
   private MockRSyncCommandExecutor rsyncCommandExecutor;
   private static final String BUILD_TAG = "docker-ptest-tag";
   private final Set<String> executedTests = Collections.newSetFromMap(new ConcurrentHashMap<String, Boolean>());
@@ -107,12 +158,13 @@ public class TestPtestOnDockers {
     scratchDir = Dirs.create(new File(baseDir, "scratch"));
     succeededLogDir = Dirs.create(new File(logDir, "succeeded"));
     failedLogDir = Dirs.create(new File(logDir, "failed"));
-    executor = MoreExecutors.listeningDecorator(Executors.newFixedThreadPool(2));
+    executor = MoreExecutors.listeningDecorator(Executors.newCachedThreadPool(
+        new ThreadFactoryBuilder().setDaemon(true).setNameFormat("DockerHostExecutor %d").build()));
     executionContext = mock(ExecutionContext.class);
     hostExecutorBuilder = mock(HostExecutorBuilder.class);
     //use real localCommandFactory
     localCommandFactory = new LocalCommandFactory(logger);
-    sshCommandExecutor = spy(new MockSSHCommandExecutor(logger));
+    sshCommandExecutor = new SSHCommandExecutor(logger);
     rsyncCommandExecutor = spy(new MockRSyncCommandExecutor(logger));
     templateDefaults = ImmutableMap.<String, String>builder()
         .put("localDir", LOCAL_DIR)
@@ -125,13 +177,14 @@ public class TestPtestOnDockers {
         .put("repository", REAL_REPOSITORY)
         .put("repositoryName", REAL_REPOSITORY_NAME)
         .put("mavenEnvOpts", REAL_MAVEN_OPTS)
+        .put("containerLogDir", "/tmp/testlogs")
         .build();
     host = new Host(HOST, USER, new String[] { LOCAL_DIR }, 2);
   }
 
   @BeforeClass
   public static void beforeClass() throws Exception {
-    URL url = TestPtestOnDockers.class.getResource("/DUMMY-001.patch");
+    URL url = TestPtestOnDockers.class.getResource("/DUMMY-002.patch");
     dummyPatchFile = new File(url.getFile());
     Assert.assertTrue("Could not find dummy patch file " + dummyPatchFile.getAbsolutePath(),
         dummyPatchFile.exists());
@@ -153,9 +206,43 @@ public class TestPtestOnDockers {
 
   private void createTestBatches() throws Exception {
     testBatches = new ArrayList<>();
-    TestBatch qfileTestBatch = new QFileTestBatch(new AtomicInteger(1), "", "TestCliDriver", "",
-        Sets.newHashSet("insert0.q"), true, "itests/qtest");
+    AtomicInteger batchIdCounter = new AtomicInteger(1);
+    TestBatch qfileTestBatch = new QFileTestBatch(batchIdCounter, "test", "TestCliDriver", "qfile",
+        Sets.newHashSet(Splitter.on(", ").split(
+            "ppd_join3.q, auto_join23.q, list_bucket_dml_11.q, join10.q, udf_lower.q, "
+                + "avro_type_evolution.q, constprog_dp.q, create_struct_table.q, "
+                + "skewjoin_mapjoin9.q, check_constraint.q, hook_context_cs.q, "
+                + "vector_parquet_nested_two_level_complex.q, exim_22_import_exist_authsuccess.q,"
+                + "groupby1.q, create_func1.q, cbo_rp_udf_udaf.q, vector_decimal_aggregate.q,"
+                + "create_skewed_table1.q, partition_wise_fileformat.q, union_ppr.q,"
+                + "spark_combine_equivalent_work.q, stats_partial_size.q, join32.q,"
+                + "list_bucket_dml_14.q, input34.q, udf_parse_url.q, "
+                + "schema_evol_text_nonvec_part.q, enforce_constraint_notnull.q, "
+                + "zero_rows_single_insert.q, ctas_char.q")),
+        true, "itests/qtest");
+
+    /*TestBatch unitTestBatch = new UnitTestBatch(new AtomicInteger(1), "test", Lists.newArrayList(
+        Splitter.on(", ").split("TestCommands, TestUserHS2ConnectionFileParser, TestBufferedRows, "
+            + "TestBeeLineOpts, TestHiveCli, TestClientCommandHookFactory, "
+            + "TestBeeLineExceptionHandling, TestBeelineArgParsing, TestIncrementalRows, "
+            + "TestShutdownHook, TestBeeLineHistory, TestHiveSchemaTool, TestTableOutputFormat")),
+        "beeline", true);*/
+    TestBatch unitTestBatch = new UnitTestBatch(batchIdCounter, "test", Lists.newArrayList(
+        Splitter.on(", ").split("TestCommands, TestUserHS2ConnectionFileParser, TestBufferedRows, "
+            + "TestBeeLineOpts")),
+        "beeline", true);
+
+    TestBatch failingQueryTestBatch =
+        new QFileTestBatch(batchIdCounter, "test", "TestCliDriver", "qfile",
+            Sets.newHashSet(Splitter.on(", ").split("dummy_failing_test.q")), true, "itests/qtest");
+
+    TestBatch failingUnitTestBatch =
+        new UnitTestBatch(batchIdCounter, "test", Lists.newArrayList("TestFakeFailure"), "service",
+            true);
     testBatches.add(qfileTestBatch);
+    testBatches.add(unitTestBatch);
+    testBatches.add(failingQueryTestBatch);
+    testBatches.add(failingUnitTestBatch);
   }
 
   private void createHostExecutor() throws Exception {
@@ -176,7 +263,7 @@ public class TestPtestOnDockers {
    * @throws Exception
    */
   @Test
-  public void testDockerFile() throws Throwable {
+  public void testPrepPhase() throws Throwable {
     prepPhase.execute();
     Assert.assertNotNull("Scratch directory needs to be set", prepPhase.getLocalScratchDir());
     File dockerFile = new File(prepPhase.getLocalScratchDir(), "Dockerfile");
