@@ -37,9 +37,12 @@ public class DockerClient implements ContainerClient {
   private static final String DOCKER_SCRATCH_DIR = HOME_DIR + File.separatorChar + "scratch" + File.separatorChar;
   private static Logger logger;
   private final ContainerClientContext context;
+  private final String DOCKER_EXEC;
   public DockerClient(ContainerClientContext context) {
     logger = context.getLogger();
     this.context = context;
+    String dockerPath = context.getTemplateDefaults().get("dockerExecPath");
+    DOCKER_EXEC = dockerPath == null ? "/usr/bin/docker" : dockerPath;
   }
 
   @Override
@@ -63,7 +66,7 @@ public class DockerClient implements ContainerClient {
     long seconds = TimeUnit.SECONDS.convert(toWait, unit);
     logger.info("Building image");
     String dockerBuildCommand =
-        new StringBuilder("docker build")
+        new StringBuilder(DOCKER_EXEC + " build")
             .append(" --memory " + "2g")
             .append(" --memory-swap " + "-1")
             .append(" --tag " + imageName())
@@ -86,7 +89,7 @@ public class DockerClient implements ContainerClient {
 
   @Override
   public String getRunContainerCommand(String containerName, TestBatch batch) {
-    return new StringBuilder("/usr/local/bin/docker run")
+    return new StringBuilder(DOCKER_EXEC + " run")
         .append(" --memory " + "2G")
         .append(" --name " + containerName)
         //.append(" -d")
@@ -110,8 +113,7 @@ public class DockerClient implements ContainerClient {
   @Override
   public String getCopyTestLogsCommand(String containerName, String dir) {
     String containerLogDir = context.getTemplateDefaults().get("containerLogDir");
-    //TODO get path for docker executable from context
-    return new StringBuilder("/usr/local/bin/docker cp")
+    return new StringBuilder(DOCKER_EXEC + " cp")
         .append(" " + containerName + ":" + containerLogDir)
         .append(" " + dir)
         .toString();
@@ -119,10 +121,9 @@ public class DockerClient implements ContainerClient {
 
   @Override
   public String getStopContainerCommand(String containerName, boolean forceRemove) {
-    //TODO get path for docker executable from context
-    StringBuilder ret = new StringBuilder("/usr/local/bin/docker stop " + containerName);
+    StringBuilder ret = new StringBuilder(DOCKER_EXEC + " stop " + containerName);
     if (forceRemove) {
-      ret.append("; /usr/local/bin/docker rm " + containerName);
+      ret.append("; " + DOCKER_EXEC + " rm " + containerName);
     }
     return ret.toString();
   }

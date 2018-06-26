@@ -145,6 +145,7 @@ public class TestPtestOnDockers {
   private static final String REAL_REPOSITORY = "https://github.com/apache/hive.git";
   private static final String REAL_REPOSITORY_NAME = "apache-hive";
   private static final String REAL_MAVEN_OPTS = "-Xmx2048m";
+  private static final String DOCKER_EXEC_PATH = "/usr/local/bin/docker";
   private SSHCommandExecutor sshCommandExecutor;
   private MockRSyncCommandExecutor rsyncCommandExecutor;
   private static final String BUILD_TAG = "docker-ptest-tag";
@@ -178,6 +179,7 @@ public class TestPtestOnDockers {
         .put("repositoryName", REAL_REPOSITORY_NAME)
         .put("mavenEnvOpts", REAL_MAVEN_OPTS)
         .put("containerLogDir", "/tmp/testlogs")
+        .put("dockerExecPath", DOCKER_EXEC_PATH)
         .build();
     host = new Host(HOST, USER, new String[] { LOCAL_DIR }, 2);
   }
