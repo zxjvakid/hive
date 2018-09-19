@@ -17,19 +17,10 @@
  */
 package org.apache.hadoop.hive.ql.exec.tez;
 
-import com.google.common.annotations.VisibleForTesting;
-import com.google.common.base.Preconditions;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.ListenableFutureTask;
-import com.google.common.util.concurrent.SettableFuture;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.FutureTask;
@@ -37,7 +28,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
-import org.apache.hadoop.fs.Path;
+
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.session.SessionState;
@@ -47,6 +38,13 @@ import org.apache.hadoop.hive.registry.impl.TezAmRegistryImpl;
 import org.apache.tez.dag.api.TezConfiguration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListenableFutureTask;
+import com.google.common.util.concurrent.SettableFuture;
 
 /**
  * Distinct from TezSessionPool manager in that it implements a session pool, and nothing else.
@@ -107,8 +105,13 @@ class TezSessionPool<SessionType extends TezSessionPoolSession> {
     this.parentSessionState = SessionState.get();
     if (initialSize == 0) return; // May be resized later.
 
-    int threadCount = Math.min(initialSize,
+    int threadCount = 1;
+    if (!HiveConf.getBoolVar(initConf, ConfVars.HIVE_SERVER2_TEZ_USE_EXTERNAL_SESSIONS)) {
+      // Don't use multiple threads for external sessions.
+      threadCount = Math.min(initialSize,
         HiveConf.getIntVar(initConf, ConfVars.HIVE_SERVER2_TEZ_SESSION_MAX_INIT_THREADS));
+    }
+
     Preconditions.checkArgument(threadCount > 0);
     if (threadCount == 1) {
       for (int i = 0; i < initialSize; ++i) {
@@ -294,7 +297,7 @@ class TezSessionPool<SessionType extends TezSessionPoolSession> {
     if (!isUsable) throw new IOException(session + " is not usable at pool startup");
     session.getConf().set(TezConfiguration.TEZ_QUEUE_NAME, session.getQueueName());
     configureAmRegistry(session);
-    session.open();
+    session.open(true);
     if (session.stopUsing()) {
       if (!putSessionBack(session, false)) {
         LOG.warn("Couldn't add a session during initialization");
@@ -481,7 +484,7 @@ class TezSessionPool<SessionType extends TezSessionPoolSession> {
   /**
    * Should be called when the session is no longer needed, to remove it from bySessionId.
    */
-  public void notifyClosed(TezSessionState session) {
+  public void notifyClosed(SessionType session) {
     bySessionId.remove(session.getSessionId());
   }
 }
