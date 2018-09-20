@@ -33,6 +33,7 @@ import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.session.KillQuery;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
 import org.apache.hadoop.security.Credentials;
+import org.apache.hadoop.yarn.api.records.ApplicationId;
 import org.apache.hadoop.yarn.api.records.LocalResource;
 import org.apache.tez.client.TezClient;
 import org.apache.tez.dag.api.TezConfiguration;
@@ -83,10 +84,9 @@ public class TezExternalSessionState extends TezSessionState {
     ServicePluginsDescriptor spd = createServicePluginDescriptor(llapMode, tezConfig);
     Credentials llapCredentials = createLlapCredentials(llapMode, tezConfig);
 
-    final TezClient session = TezClient.newBuilder("HIVE-" + getSessionId(), tezConfig)
-        .setIsSession(true).setLocalResources(commonLocalResources)
-        .setCredentials(llapCredentials).setServicePluginDescriptor(spd)
-        .build();
+
+    TezClient session = createTezClientObject(
+        tezConfig, commonLocalResources, llapCredentials, spd);
 
     LOG.info("Opening new Tez Session (id: " + getSessionId() + ")");
     TezJobMonitor.initShutdownHook();
@@ -104,7 +104,7 @@ public class TezExternalSessionState extends TezSessionState {
       throw new IOException(e);
     }
 
-    // TODO## blocked on Tez release; session.getClient(ApplicationId.fromString(externalAppId));
+    session = session.getClient(ApplicationId.fromString(externalAppId));
     LOG.info("Started an external session; client name {}, app ID {}",
         session.getClientName(), externalAppId);
     setTezClient(session);
@@ -144,5 +144,14 @@ public class TezExternalSessionState extends TezSessionState {
     LOG.info("Killing the query {}: {}", queryId, reason);
     killQuery.killQuery(queryId, reason, conf, false);
     return true;
+  }
+
+  @Override
+  public boolean reconnect(String applicationId, long amAgeMs)
+      throws IOException, LoginException, URISyntaxException, TezException {
+    // Recovery implies HS2 assumes control over sessions from the previous owner (another HS2).
+    // External sessions though are borrowed from the registry managed by someone else.
+    // TODO: logically we'd need to support recovery for active-active HA? Depends on impl.
+    throw new UnsupportedOperationException("Recovery is not supported for external sessions");
   }
 }

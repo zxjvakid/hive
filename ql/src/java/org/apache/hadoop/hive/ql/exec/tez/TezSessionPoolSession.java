@@ -122,7 +122,8 @@ class TezSessionPoolSession implements TezSession {
   private void afterOpen() {
     manager.registerOpenSession(this);
     if (expirationTracker != null) {
-      expirationTracker.addToExpirationQueue(this);
+      boolean isNotExpired = expirationTracker.addToExpirationQueue(this, 0L);
+      assert isNotExpired;
     }
   }
 
@@ -131,6 +132,33 @@ class TezSessionPoolSession implements TezSession {
       throws LoginException, IOException, URISyntaxException, TezException {
     baseSession.open(resources);
     afterOpen();
+  }
+
+  @Override
+  public boolean reconnect(String applicationId, long amAgeMs) throws IOException,
+      LoginException, URISyntaxException, TezException {
+    if (expirationTracker != null && !expirationTracker.isOldAmUsable(amAgeMs)) {
+      closeExpiredOnReconnect(applicationId);
+      return false;
+    }
+    if (!baseSession.reconnect(applicationId, amAgeMs)) {
+      return false;
+    }
+    manager.registerOpenSession(this);
+    if (expirationTracker != null && !expirationTracker.addToExpirationQueue(this, amAgeMs)) {
+      closeExpiredOnReconnect(applicationId);
+      return false;
+    }
+    return true;
+  }
+
+  private void closeExpiredOnReconnect(String applicationId) {
+    LOG.warn("Not using an old AM due to expiration timeout: " + applicationId);
+    try {
+      this.close(false);
+    } catch (Exception e) {
+      LOG.info("Failed to close the old AM", e);
+    }
   }
 
   // TODO: this is only supported in CLI, might be good to try to remove it.
@@ -260,7 +288,7 @@ class TezSessionPoolSession implements TezSession {
   }
 
   //  ********** The methods that we redirect to base.
-  // We could instead have a separate "data" interface that would "return superr" here, and
+  // We could instead have a separate "data" interface that would "return baseSession" here, and
   // "return this" in the actual session implementation; however that would require everyone to
   // call session.getData().method() for some arbitrary set of methods. Let's keep all the
   // ugliness in one place.

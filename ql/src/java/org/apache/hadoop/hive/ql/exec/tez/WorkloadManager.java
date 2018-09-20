@@ -110,6 +110,7 @@ public class WorkloadManager extends AbstractTriggerValidator
   private final SessionExpirationTracker expirationTracker;
   private final RestrictedConfigChecker restrictedConfig;
   private final QueryAllocationManager allocationManager;
+  private final boolean recoverAms;
   private final String yarnQueue;
   private final int amRegistryTimeoutMs;
   private final boolean allowAnyPool;
@@ -185,7 +186,8 @@ public class WorkloadManager extends AbstractTriggerValidator
   }
 
   /** Called once, when HS2 initializes. */
-  public static WorkloadManager create(String yarnQueue, HiveConf conf, WMFullResourcePlan plan)
+  public static WorkloadManager create(String yarnQueue, HiveConf conf,
+      WMFullResourcePlan plan, boolean recoverAms)
     throws ExecutionException, InterruptedException {
     assert INSTANCE == null;
     // We could derive the expected number of AMs to pass in.
@@ -193,16 +195,18 @@ public class WorkloadManager extends AbstractTriggerValidator
     //       known once the AMs register, and they are different for every AM (unlike LLAP token).
     LlapPluginEndpointClientImpl amComm = new LlapPluginEndpointClientImpl(conf, null, -1);
     QueryAllocationManager qam = new GuaranteedTasksAllocator(conf, amComm);
-    return (INSTANCE = new WorkloadManager(amComm, yarnQueue, conf, qam, plan));
+    return (INSTANCE = new WorkloadManager(amComm, yarnQueue, conf, qam, plan, recoverAms));
   }
 
   @VisibleForTesting
   WorkloadManager(LlapPluginEndpointClientImpl amComm, String yarnQueue, HiveConf conf,
-      QueryAllocationManager qam, WMFullResourcePlan plan) throws ExecutionException, InterruptedException {
+      QueryAllocationManager qam, WMFullResourcePlan plan, boolean recoverAms)
+          throws ExecutionException, InterruptedException {
     this.yarnQueue = yarnQueue;
     this.conf = conf;
     this.totalQueryParallelism = determineQueryParallelism(plan);
     this.allocationManager = qam;
+    this.recoverAms = recoverAms;
     this.allocationManager.setClusterChangedCallback(() -> notifyOfClusterStateChange());
 
     this.amComm = amComm;
@@ -213,8 +217,9 @@ public class WorkloadManager extends AbstractTriggerValidator
 
     this.amRegistryTimeoutMs = (int)HiveConf.getTimeVar(
       conf, ConfVars.HIVE_SERVER2_TEZ_WM_AM_REGISTRY_TIMEOUT, TimeUnit.MILLISECONDS);
-    tezAmPool = new TezSessionPool<>(conf, totalQueryParallelism, true,
-      oldSession -> createSession(oldSession == null ? null : oldSession.getConf()));
+    tezAmPool = new TezSessionPool<>(conf, totalQueryParallelism,
+      HiveConf.getVar(conf, ConfVars.LLAP_TASK_SCHEDULER_AM_REGISTRY_NAME),
+      (oldSession, id) -> createSession(oldSession == null ? null : oldSession.getConf(), id));
     restrictedConfig = new RestrictedConfigChecker(conf);
     // Only creates the expiration tracker if expiration is configured.
     expirationTracker = SessionExpirationTracker.create(conf, this);
@@ -264,7 +269,7 @@ public class WorkloadManager extends AbstractTriggerValidator
 
   public void start() throws Exception {
     initTriggers();
-    tezAmPool.start();
+    tezAmPool.start(recoverAms);
     if (expirationTracker != null) {
       expirationTracker.start();
     }
@@ -285,13 +290,25 @@ public class WorkloadManager extends AbstractTriggerValidator
     }
   }
 
-  public void stop() throws Exception {
-    List<TezSessionPoolSession> sessionsToClose = null;
-    synchronized (openSessions) {
-      sessionsToClose = new ArrayList<>(openSessions.keySet());
-    }
-    for (TezSessionPoolSession sessionState : sessionsToClose) {
-      sessionState.close(false);
+
+  public void stop(boolean isStop) throws Exception {
+    if (!recoverAms || isStop) {
+      List<TezSessionPoolSession> sessionsToClose = null;
+      synchronized (openSessions) {
+        sessionsToClose = new ArrayList<>(openSessions.keySet());
+      }
+      for (TezSessionPoolSession sessionState : sessionsToClose) {
+        sessionState.close(false);
+      }
+    } else {
+      int count = 0;
+      synchronized (openSessions) {
+        count = openSessions.size();
+        openSessions.clear();
+      }
+      if (count > 0) {
+        LOG.info("AM recovery enabled; leaving " + count + " Tez sessions running");
+      }
     }
     if (expirationTracker != null) {
       expirationTracker.stop();
@@ -448,7 +465,7 @@ public class WorkloadManager extends AbstractTriggerValidator
             addKillQueryResult(toKill, true);
             killCtx.killSessionFuture.set(true);
             wmEvent.endEvent(toKill);
-            
+
           } catch (HiveException ex) {
             LOG.error("Failed to kill " + queryId + "; will try to restart AM instead" , ex);
           }
@@ -1662,8 +1679,9 @@ public class WorkloadManager extends AbstractTriggerValidator
     }
   }
 
-  private WmTezSession createSession(HiveConf conf) {
-    WmTezSession session = createSessionObject(TezSessionState.makeSessionId(), conf);
+  private WmTezSession createSession(HiveConf conf, String sessionId) {
+    WmTezSession session = createSessionObject(
+        sessionId != null ? sessionId : TezSessionState.makeSessionId(), conf);
     session.setQueueName(yarnQueue);
     session.setDefault();
     LOG.info("Created new interactive session object " + session.getSessionId());

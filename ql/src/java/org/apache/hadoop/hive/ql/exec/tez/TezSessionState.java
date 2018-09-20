@@ -219,6 +219,74 @@ public class TezSessionState implements TezSession {
     open(false);
   }
 
+  public boolean reconnect(String applicationId, long amAgeMs)
+      throws IOException, LoginException, URISyntaxException, TezException  {
+    this.queueName = conf.get(TezConfiguration.TEZ_QUEUE_NAME);
+    this.doAsEnabled = conf.getBoolVar(HiveConf.ConfVars.HIVE_SERVER2_ENABLE_DOAS);
+    this.user = Utils.getUGI().getShortUserName();
+
+    // TODO: we currently have to create the client as if it was new, to have the correct
+    //       local object state. So, go thru most of the same things that open does.
+
+    Path scratchDir = reconnectTezDir(sessionId, null);
+    if (scratchDir == null) {
+      LOG.warn("Cannot find the original session scratchDir, will create a new one");
+      scratchDir = createTezDir(sessionId, null);
+    }
+    tezScratchDir = scratchDir;
+    scratchDir = reconnectTezDir(sessionId, "resources");
+    if (scratchDir == null) {
+      LOG.warn("Cannot find the original resources scratchDir, will create a new one");
+      scratchDir = createTezDir(sessionId, "resources");
+    }
+    this.resources = new HiveResources(scratchDir);
+    LOG.info("Created new resources: " + resources);
+
+    // We won't actually localize anything here; the files should already be there.
+    // The NotFromConf files are unknown - if any are needed later and were localized by
+    // the previous HS2, this one will try to localize them again and find they're already there.
+    ensureLocalResources(conf, null);
+
+    // exec and LLAP jars are definitely already localized... we just need to init the fields.
+    // TODO: perhaps we could improve this method to share some fields when multiple
+    //       sessions are being reconnected at the same time.
+
+    final Map<String, LocalResource> commonLocalResources = addExecJarAndLocalResources();
+
+    final boolean llapMode = addLlapJarsIfNeeded(commonLocalResources);
+
+    // generate basic tez config
+    final TezConfiguration tezConfig = createTezConfig();
+    tezConfig.set(TezConfiguration.TEZ_AM_STAGING_DIR, tezScratchDir.toUri().toString());
+    final Credentials llapCredentials = createLlapCredentials(llapMode, tezConfig);
+    final ServicePluginsDescriptor spd = createServicePluginDescriptor(llapMode, tezConfig);
+
+    // Do not initialize prewarm here. Either it's already prewarmed or we don't care (for now).
+
+    TezClient session = createTezClientObject(
+        tezConfig, commonLocalResources, llapCredentials, spd);
+
+    // Note: if this ever moved on a threadpool, see isOnThread stuff
+    //       in open() w.r.t. how to propagate errors correctly.
+    // Can this ever return a different client? Not as of this writing. Hmm.
+    session = session.getClient(applicationId);
+    this.session = session;
+    return true;
+  }
+
+  private boolean isLlapMode() {
+    return "llap".equalsIgnoreCase(HiveConf.getVar(
+        conf, HiveConf.ConfVars.HIVE_EXECUTION_MODE));
+  }
+
+  protected final TezClient createTezClientObject(TezConfiguration tezConfig,
+      Map<String, LocalResource> commonLocalResources,
+      Credentials llapCredentials, ServicePluginsDescriptor spd) {
+    return TezClient.newBuilder("HIVE-" + sessionId, tezConfig).setIsSession(true)
+        .setLocalResources(commonLocalResources).setCredentials(llapCredentials)
+        .setServicePluginDescriptor(spd).build();
+  }
+
   /**
    * Creates a tez session. A session is tied to either a cli/hs2 session. You can
    * submit multiple DAGs against a session (as long as they are executed serially).
@@ -266,20 +334,13 @@ public class TezSessionState implements TezSession {
       LOG.info("Created new resources: " + resources);
     }
 
-    // unless already installed on all the cluster nodes, we'll have to
-    // localize hive-exec.jar as well.
-    appJarLr = createJarLocalResource(utils.getExecJarPathLocal(conf));
 
     // configuration for the application master
-    final Map<String, LocalResource> commonLocalResources = new HashMap<String, LocalResource>();
-    commonLocalResources.put(DagUtils.getBaseName(appJarLr), appJarLr);
-    for (LocalResource lr : this.resources.localizedResources) {
-      commonLocalResources.put(DagUtils.getBaseName(lr), lr);
-    }
-
+    final Map<String, LocalResource> commonLocalResources = addExecJarAndLocalResources();
     final boolean llapMode = addLlapJarsIfNeeded(commonLocalResources);
 
     // Create environment for AM.
+    // TODO: this is unused since AMConfiguration was replaced with TezConfiguration.
     Map<String, String> amEnv = new HashMap<String, String>();
     MRHelpers.updateEnvBasedOnMRAMEnv(conf, amEnv);
 
@@ -300,10 +361,8 @@ public class TezSessionState implements TezSession {
       tezConfig.setInt(TezConfiguration.TEZ_AM_SESSION_MIN_HELD_CONTAINERS, n);
     }
 
-    final TezClient session = TezClient.newBuilder("HIVE-" + sessionId, tezConfig)
-        .setIsSession(true).setLocalResources(commonLocalResources)
-        .setCredentials(llapCredentials).setServicePluginDescriptor(spd)
-        .build();
+    TezClient session = createTezClientObject(
+        tezConfig, commonLocalResources, llapCredentials, spd);
 
     LOG.info("Opening new Tez Session (id: " + sessionId
         + ", scratch dir: " + tezScratchDir + ")");
@@ -342,6 +401,17 @@ public class TezSessionState implements TezSession {
     }
   }
 
+  private Map<String, LocalResource> addExecJarAndLocalResources()
+      throws IOException, LoginException, URISyntaxException {
+    final Map<String, LocalResource> commonLocalResources = new HashMap<String, LocalResource>();
+    appJarLr = createJarLocalResource(utils.getExecJarPathLocal(conf));
+    commonLocalResources.put(DagUtils.getBaseName(appJarLr), appJarLr);
+    for (LocalResource lr : this.resources.localizedResources) {
+      commonLocalResources.put(DagUtils.getBaseName(lr), lr);
+    }
+    return commonLocalResources;
+  }
+
   protected static ServicePluginsDescriptor createServicePluginDescriptor(boolean llapMode,
       TezConfiguration tezConfig) throws IOException {
     if (!llapMode) return ServicePluginsDescriptor.create(true);
@@ -376,7 +446,7 @@ public class TezSessionState implements TezSession {
 
   protected final boolean addLlapJarsIfNeeded(Map<String, LocalResource> commonLocalResources)
       throws IOException, LoginException {
-    if (!"llap".equalsIgnoreCase(HiveConf.getVar(conf, ConfVars.HIVE_EXECUTION_MODE))) {
+    if (!isLlapMode()) {
       return false;
     }
     // localize llap client jars
@@ -565,7 +635,7 @@ public class TezSessionState implements TezSession {
           } else if (!preferTez) {
             conf.set(dep.getValue(), mrValue, "TRANSLATED_TO_TEZ_AND_MR_OVERRIDE");
           }
-          LOG.info("Config: mr(unset):" + dep.getKey() + ", mr initial value="
+          LOG.debug("Config: mr(unset):" + dep.getKey() + ", mr initial value="
               + mrValue
               + ", tez(original):" + dep.getValue() + "=" + tezValue
               + ", tez(final):" + dep.getValue() + "=" + conf.get(dep.getValue()));
@@ -775,21 +845,40 @@ public class TezSessionState implements TezSession {
    * be used with Tez. Assumes scratchDir exists.
    */
   private Path createTezDir(String sessionId, String suffix) throws IOException {
-    // tez needs its own scratch dir (per session)
-    // TODO: De-link from SessionState. A TezSession can be linked to different Hive Sessions via the pool.
-    SessionState sessionState = SessionState.get();
-    String hdfsScratchDir = sessionState == null ? HiveConf.getVar(conf, HiveConf.ConfVars.SCRATCHDIR) : sessionState
-      .getHdfsScratchDirURIString();
-    Path tezDir = new Path(hdfsScratchDir, TEZ_DIR);
-    tezDir = new Path(tezDir, sessionId + ((suffix == null) ? "" : ("-" + suffix)));
+    Path tezDir = getScratchDirPath(sessionId, suffix, false);
     FileSystem fs = tezDir.getFileSystem(conf);
-    FsPermission fsPermission = new FsPermission(HiveConf.getVar(conf, HiveConf.ConfVars.SCRATCHDIRPERMISSION));
+    FsPermission fsPermission = new FsPermission(
+        HiveConf.getVar(conf, HiveConf.ConfVars.SCRATCHDIRPERMISSION));
     fs.mkdirs(tezDir, fsPermission);
     // Make sure the path is normalized (we expect validation to pass since we just created it).
     tezDir = DagUtils.validateTargetDir(tezDir, conf).getPath();
 
     // Directory removal will be handled by cleanup at the SessionState level.
     return tezDir;
+  }
+
+  private Path reconnectTezDir(String sessionId, String suffix) throws IOException {
+    // Make sure the path is normalized (we expect validation to pass since we just created it).
+    Path dir = getScratchDirPath(sessionId, suffix, false);
+    FileStatus dirFs = DagUtils.validateTargetDir(dir, conf);
+    if (dirFs != null) {
+      return dirFs.getPath();
+    }
+    // Perhaps the original session open used a different config.
+    dir = getScratchDirPath(sessionId, suffix, true);
+    if (dir == null) return null;
+    dirFs = DagUtils.validateTargetDir(dir, conf);
+    return (dirFs != null) ? dirFs.getPath() : null;
+  }
+
+  private Path getScratchDirPath(String sessionId, String suffix, boolean isAlternative) {
+    // TODO: De-link from SessionState. A TezSession can be linked to different Hive Sessions via the pool.
+    SessionState sessionState = SessionState.get();
+    if (sessionState == null && isAlternative) return null; // No alternative.
+    String hdfsScratchDir = (isAlternative || sessionState == null)
+        ? HiveConf.getVar(conf, ConfVars.SCRATCHDIR) : sessionState.getHdfsScratchDirURIString();
+    Path tezDir = new Path(hdfsScratchDir, TEZ_DIR);
+    return new Path(tezDir, sessionId + ((suffix == null) ? "" : ("-" + suffix)));
   }
 
   /**

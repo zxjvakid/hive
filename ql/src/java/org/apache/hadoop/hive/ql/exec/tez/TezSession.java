@@ -76,6 +76,8 @@ public interface TezSession {
   void beginOpen(String[] additionalFiles, LogHelper console)
       throws IOException, LoginException, URISyntaxException, TezException;
   void endOpen() throws InterruptedException, CancellationException;
+  boolean reconnect(String applicationId, long amAgeMs)
+       throws IOException, LoginException, URISyntaxException, TezException;
   TezSession reopen() throws Exception;
   void destroy() throws Exception;
   void close(boolean keepTmpDir) throws Exception;
