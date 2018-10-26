@@ -43,6 +43,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.common.FileUtils;
 import org.apache.hadoop.hive.common.type.Date;
+import org.apache.hadoop.hive.conf.Constants;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
@@ -90,10 +91,6 @@ import org.apache.hadoop.hive.ql.plan.PlanUtils;
 import org.apache.hadoop.hive.ql.plan.TableDesc;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.session.SessionState.LogHelper;
-import org.apache.hadoop.hive.ql.udf.generic.GenericUDFCurrentDate;
-import org.apache.hadoop.hive.ql.udf.generic.GenericUDFCurrentTimestamp;
-import org.apache.hadoop.hive.ql.udf.generic.GenericUDFCurrentUser;
-import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPNull;
 import org.apache.hadoop.hive.serde.serdeConstants;
 import org.apache.hadoop.hive.serde2.io.DateWritableV2;
 import org.apache.hadoop.hive.serde2.lazy.LazySimpleSerDe;
@@ -102,6 +99,9 @@ import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspectorConverters;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfo;
 import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.apache.hadoop.mapred.TextInputFormat;
+import org.apache.hadoop.security.alias.AbstractJavaKeyStoreProvider;
+import org.apache.hadoop.security.alias.CredentialProvider;
+import org.apache.hadoop.security.alias.CredentialProviderFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -671,15 +671,6 @@ public abstract class BaseSemanticAnalyzer {
     final String defaultValue;
 
     ConstraintInfo(String colName, String constraintName,
-        boolean enable, boolean validate, boolean rely) {
-      this.colName = colName;
-      this.constraintName = constraintName;
-      this.enable = enable;
-      this.validate = validate;
-      this.rely = rely;
-      this.defaultValue = null;
-    }
-    ConstraintInfo(String colName, String constraintName,
                    boolean enable, boolean validate, boolean rely, String defaultValue) {
       this.colName = colName;
       this.constraintName = constraintName;
@@ -820,25 +811,26 @@ public abstract class BaseSemanticAnalyzer {
     generateConstraintInfos(child, columnNames.build(), cstrInfos, null, null);
   }
 
-  private static boolean isDefaultValueAllowed(final ExprNodeDesc defaultValExpr) {
+  private static boolean isDefaultValueAllowed(ExprNodeDesc defaultValExpr) {
+    while (FunctionRegistry.isOpCast(defaultValExpr)) {
+      defaultValExpr = defaultValExpr.getChildren().get(0);
+    }
+
     if(defaultValExpr instanceof ExprNodeConstantDesc) {
       return true;
     }
-    else if(FunctionRegistry.isOpCast(defaultValExpr)) {
-      return isDefaultValueAllowed(defaultValExpr.getChildren().get(0));
-    }
-    else if(defaultValExpr instanceof ExprNodeGenericFuncDesc){
-      ExprNodeGenericFuncDesc defFunc = (ExprNodeGenericFuncDesc)defaultValExpr;
-      if(defFunc.getGenericUDF() instanceof GenericUDFOPNull
-          || defFunc.getGenericUDF() instanceof GenericUDFCurrentTimestamp
-          || defFunc.getGenericUDF() instanceof GenericUDFCurrentDate
-          || defFunc.getGenericUDF() instanceof GenericUDFCurrentUser){
-        return true;
+
+    if(defaultValExpr instanceof ExprNodeGenericFuncDesc){
+      for (ExprNodeDesc argument : defaultValExpr.getChildren()) {
+        if (!isDefaultValueAllowed(argument)) {
+          return false;
+        }
       }
+      return true;
     }
+
     return false;
   }
-
 
   // given an ast node this method recursively goes over checkExpr ast. If it finds a node of type TOK_SUBQUERY_EXPR
   // it throws an error.
@@ -1831,18 +1823,9 @@ public abstract class BaseSemanticAnalyzer {
     return transactionalInQuery;
   }
 
-  /**
-   * Construct list bucketing context.
-   *
-   * @param skewedColNames
-   * @param skewedValues
-   * @param skewedColValueLocationMaps
-   * @param isStoredAsSubDirectories
-   * @return
-   */
   protected ListBucketingCtx constructListBucketingCtx(List<String> skewedColNames,
       List<List<String>> skewedValues, Map<List<String>, String> skewedColValueLocationMaps,
-      boolean isStoredAsSubDirectories, HiveConf conf) {
+      boolean isStoredAsSubDirectories) {
     ListBucketingCtx lbCtx = new ListBucketingCtx();
     lbCtx.setSkewedColNames(skewedColNames);
     lbCtx.setSkewedColValues(skewedValues);
@@ -2084,7 +2067,7 @@ public abstract class BaseSemanticAnalyzer {
     }
     String normalizedColSpec = originalColSpec;
     if (colType.equals(serdeConstants.DATE_TYPE_NAME)) {
-      normalizedColSpec = normalizeDateCol(colValue, originalColSpec);
+      normalizedColSpec = normalizeDateCol(colValue);
     }
     if (!normalizedColSpec.equals(originalColSpec)) {
       STATIC_LOG.warn("Normalizing partition spec - " + colName + " from "
@@ -2093,8 +2076,7 @@ public abstract class BaseSemanticAnalyzer {
     }
   }
 
-  private static String normalizeDateCol(
-      Object colValue, String originalColSpec) throws SemanticException {
+  private static String normalizeDateCol(Object colValue) throws SemanticException {
     Date value;
     if (colValue instanceof DateWritableV2) {
       value = ((DateWritableV2) colValue).get(); // Time doesn't matter.
@@ -2143,10 +2125,6 @@ public abstract class BaseSemanticAnalyzer {
     } catch (Exception e) {
       throw new SemanticException(e);
     }
-  }
-
-  private Path tryQualifyPath(Path path) throws IOException {
-    return tryQualifyPath(path,conf);
   }
 
   public static Path tryQualifyPath(Path path, HiveConf conf) throws IOException {
@@ -2300,5 +2278,28 @@ public abstract class BaseSemanticAnalyzer {
 
   public WriteEntity getAcidAnalyzeTable() {
     return null;
+  }
+
+  public void addPropertyReadEntry(Map<String, String> tblProps, Set<ReadEntity> inputs) throws SemanticException {
+    if (tblProps.containsKey(Constants.JDBC_KEYSTORE)) {
+      try {
+        String keystore = tblProps.get(Constants.JDBC_KEYSTORE);
+        Configuration conf = new Configuration();
+        conf.set(CredentialProviderFactory.CREDENTIAL_PROVIDER_PATH, keystore);
+        boolean found = false;
+        for (CredentialProvider provider : CredentialProviderFactory.getProviders(conf))
+          if (provider instanceof AbstractJavaKeyStoreProvider) {
+            Path path = ((AbstractJavaKeyStoreProvider) provider).getPath();
+            inputs.add(toReadEntity(path));
+            found = true;
+          }
+        if (!found) {
+          throw new SemanticException("Cannot recognize keystore " + keystore + ", only JavaKeyStoreProvider is " +
+                  "supported");
+        }
+      } catch (IOException e) {
+        throw new SemanticException(e);
+      }
+    }
   }
 }

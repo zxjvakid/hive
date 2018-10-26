@@ -5,6 +5,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -12,6 +15,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -156,6 +162,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -163,6 +172,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -307,6 +319,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       LEFT OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -314,6 +329,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       LEFT OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -392,11 +410,11 @@ STAGE PLANS:
                     0 _col0 (type: string)
                     1 _col0 (type: string)
                   outputColumnNames: _col0, _col1, _col2, _col3
-                  Statistics: Num rows: 250 Data size: 24972 Basic stats: COMPLETE Column stats: COMPLETE
+                  Statistics: Num rows: 262 Data size: 26112 Basic stats: COMPLETE Column stats: COMPLETE
                   Select Operator
                     expressions: hash(_col0) (type: int), hash(_col1) (type: int), hash(_col2) (type: int), hash(_col3) (type: int)
                     outputColumnNames: _col0, _col1, _col2, _col3
-                    Statistics: Num rows: 250 Data size: 24972 Basic stats: COMPLETE Column stats: COMPLETE
+                    Statistics: Num rows: 262 Data size: 26112 Basic stats: COMPLETE Column stats: COMPLETE
                     Group By Operator
                       aggregations: sum(_col0), sum(_col1), sum(_col2), sum(_col3)
                       mode: hash
@@ -454,6 +472,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       LEFT OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -461,6 +482,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       LEFT OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -539,11 +563,11 @@ STAGE PLANS:
                     0 _col0 (type: string)
                     1 _col0 (type: string)
                   outputColumnNames: _col0, _col1, _col2, _col3
-                  Statistics: Num rows: 250 Data size: 24972 Basic stats: COMPLETE Column stats: COMPLETE
+                  Statistics: Num rows: 262 Data size: 26112 Basic stats: COMPLETE Column stats: COMPLETE
                   Select Operator
                     expressions: hash(_col0) (type: int), hash(_col1) (type: int), hash(_col2) (type: int), hash(_col3) (type: int)
                     outputColumnNames: _col0, _col1, _col2, _col3
-                    Statistics: Num rows: 250 Data size: 24972 Basic stats: COMPLETE Column stats: COMPLETE
+                    Statistics: Num rows: 262 Data size: 26112 Basic stats: COMPLETE Column stats: COMPLETE
                     Group By Operator
                       aggregations: sum(_col0), sum(_col1), sum(_col2), sum(_col3)
                       mode: hash
@@ -601,6 +625,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       RIGHT OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -608,6 +635,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       RIGHT OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -686,11 +716,11 @@ STAGE PLANS:
                     0 _col0 (type: string)
                     1 _col0 (type: string)
                   outputColumnNames: _col0, _col1, _col2, _col3
-                  Statistics: Num rows: 12 Data size: 2268 Basic stats: COMPLETE Column stats: COMPLETE
+                  Statistics: Num rows: 24 Data size: 3491 Basic stats: COMPLETE Column stats: COMPLETE
                   Select Operator
                     expressions: hash(_col0) (type: int), hash(_col1) (type: int), hash(_col2) (type: int), hash(_col3) (type: int)
                     outputColumnNames: _col0, _col1, _col2, _col3
-                    Statistics: Num rows: 12 Data size: 2268 Basic stats: COMPLETE Column stats: COMPLETE
+                    Statistics: Num rows: 24 Data size: 3491 Basic stats: COMPLETE Column stats: COMPLETE
                     Group By Operator
                       aggregations: sum(_col0), sum(_col1), sum(_col2), sum(_col3)
                       mode: hash
@@ -748,6 +778,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       RIGHT OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -755,6 +788,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       RIGHT OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -833,11 +869,11 @@ STAGE PLANS:
                     0 _col0 (type: string)
                     1 _col0 (type: string)
                   outputColumnNames: _col0, _col1, _col2, _col3
-                  Statistics: Num rows: 12 Data size: 2268 Basic stats: COMPLETE Column stats: COMPLETE
+                  Statistics: Num rows: 24 Data size: 3491 Basic stats: COMPLETE Column stats: COMPLETE
                   Select Operator
                     expressions: hash(_col0) (type: int), hash(_col1) (type: int), hash(_col2) (type: int), hash(_col3) (type: int)
                     outputColumnNames: _col0, _col1, _col2, _col3
-                    Statistics: Num rows: 12 Data size: 2268 Basic stats: COMPLETE Column stats: COMPLETE
+                    Statistics: Num rows: 24 Data size: 3491 Basic stats: COMPLETE Column stats: COMPLETE
                     Group By Operator
                       aggregations: sum(_col0), sum(_col1), sum(_col2), sum(_col3)
                       mode: hash
@@ -895,6 +931,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       FULL OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -902,6 +941,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       FULL OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -988,11 +1030,11 @@ STAGE PLANS:
                   0 _col0 (type: string)
                   1 _col0 (type: string)
                 outputColumnNames: _col0, _col1, _col2, _col3
-                Statistics: Num rows: 262 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
+                Statistics: Num rows: 274 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
                 Select Operator
                   expressions: hash(_col0) (type: int), hash(_col1) (type: int), hash(_col2) (type: int), hash(_col3) (type: int)
                   outputColumnNames: _col0, _col1, _col2, _col3
-                  Statistics: Num rows: 262 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
+                  Statistics: Num rows: 274 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
                   Group By Operator
                     aggregations: sum(_col0), sum(_col1), sum(_col2), sum(_col3)
                     mode: hash
@@ -1065,6 +1107,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       FULL OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -1072,6 +1117,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       FULL OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -1158,11 +1206,11 @@ STAGE PLANS:
                   0 _col0 (type: string)
                   1 _col0 (type: string)
                 outputColumnNames: _col0, _col1, _col2, _col3
-                Statistics: Num rows: 262 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
+                Statistics: Num rows: 274 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
                 Select Operator
                   expressions: hash(_col0) (type: int), hash(_col1) (type: int), hash(_col2) (type: int), hash(_col3) (type: int)
                   outputColumnNames: _col0, _col1, _col2, _col3
-                  Statistics: Num rows: 262 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
+                  Statistics: Num rows: 274 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
                   Group By Operator
                     aggregations: sum(_col0), sum(_col1), sum(_col2), sum(_col3)
                     mode: hash
@@ -1235,6 +1283,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       FULL OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -1242,6 +1293,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       FULL OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -1328,11 +1382,11 @@ STAGE PLANS:
                   0 _col0 (type: string)
                   1 _col0 (type: string)
                 outputColumnNames: _col0, _col1, _col2, _col3
-                Statistics: Num rows: 262 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
+                Statistics: Num rows: 274 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
                 Select Operator
                   expressions: hash(_col0) (type: int), hash(_col1) (type: int), hash(_col2) (type: int), hash(_col3) (type: int)
                   outputColumnNames: _col0, _col1, _col2, _col3
-                  Statistics: Num rows: 262 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
+                  Statistics: Num rows: 274 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
                   Group By Operator
                     aggregations: sum(_col0), sum(_col1), sum(_col2), sum(_col3)
                     mode: hash
@@ -1405,6 +1459,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       FULL OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -1412,6 +1469,9 @@ FROM (SELECT a.key AS key1, a.cnt AS cnt1, b.key AS key2, b.cnt AS cnt2
       FULL OUTER JOIN (SELECT y.key as key, count(y.value) AS cnt FROM src1 y group by y.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -1498,11 +1558,11 @@ STAGE PLANS:
                   0 _col0 (type: string)
                   1 _col0 (type: string)
                 outputColumnNames: _col0, _col1, _col2, _col3
-                Statistics: Num rows: 262 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
+                Statistics: Num rows: 274 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
                 Select Operator
                   expressions: hash(_col0) (type: int), hash(_col1) (type: int), hash(_col2) (type: int), hash(_col3) (type: int)
                   outputColumnNames: _col0, _col1, _col2, _col3
-                  Statistics: Num rows: 262 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
+                  Statistics: Num rows: 274 Data size: 2457 Basic stats: COMPLETE Column stats: COMPLETE
                   Group By Operator
                     aggregations: sum(_col0), sum(_col1), sum(_col2), sum(_col3)
                     mode: hash
@@ -1576,6 +1636,9 @@ FROM (SELECT a.key AS key, count(1) AS cnt
       ON (a.key = b.key)
       GROUP BY a.key) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(tmp.key)), SUM(HASH(tmp.cnt))
 FROM (SELECT a.key AS key, count(1) AS cnt
@@ -1584,6 +1647,9 @@ FROM (SELECT a.key AS key, count(1) AS cnt
       ON (a.key = b.key)
       GROUP BY a.key) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -1665,7 +1731,7 @@ STAGE PLANS:
                   0 _col0 (type: string)
                   1 _col0 (type: string)
                 outputColumnNames: _col0
-                Statistics: Num rows: 262 Data size: 1131 Basic stats: COMPLETE Column stats: COMPLETE
+                Statistics: Num rows: 274 Data size: 1131 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   aggregations: count()
                   keys: _col0 (type: string)
@@ -1764,6 +1830,9 @@ FROM (SELECT a.key AS key, count(1) AS cnt
       ON (a.key = b.key)
       GROUP BY a.key) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(tmp.key)), SUM(HASH(tmp.cnt))
 FROM (SELECT a.key AS key, count(1) AS cnt
@@ -1772,6 +1841,9 @@ FROM (SELECT a.key AS key, count(1) AS cnt
       ON (a.key = b.key)
       GROUP BY a.key) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -1853,7 +1925,7 @@ STAGE PLANS:
                   0 _col0 (type: string)
                   1 _col0 (type: string)
                 outputColumnNames: _col0
-                Statistics: Num rows: 262 Data size: 1131 Basic stats: COMPLETE Column stats: COMPLETE
+                Statistics: Num rows: 274 Data size: 1131 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   aggregations: count()
                   keys: _col0 (type: string)
@@ -1952,6 +2024,9 @@ FROM (SELECT a.key AS key, count(1) AS cnt
       ON (a.key = b.key)
       GROUP BY a.key) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(tmp.key)), SUM(HASH(tmp.cnt))
 FROM (SELECT a.key AS key, count(1) AS cnt
@@ -1960,6 +2035,9 @@ FROM (SELECT a.key AS key, count(1) AS cnt
       ON (a.key = b.key)
       GROUP BY a.key) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -2041,7 +2119,7 @@ STAGE PLANS:
                   0 _col0 (type: string)
                   1 _col0 (type: string)
                 outputColumnNames: _col0
-                Statistics: Num rows: 262 Data size: 1131 Basic stats: COMPLETE Column stats: COMPLETE
+                Statistics: Num rows: 274 Data size: 1131 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   aggregations: count()
                   keys: _col0 (type: string)
@@ -2140,6 +2218,9 @@ FROM (SELECT a.key AS key, count(1) AS cnt
       ON (a.key = b.key)
       GROUP BY a.key) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(tmp.key)), SUM(HASH(tmp.cnt))
 FROM (SELECT a.key AS key, count(1) AS cnt
@@ -2148,6 +2229,9 @@ FROM (SELECT a.key AS key, count(1) AS cnt
       ON (a.key = b.key)
       GROUP BY a.key) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -2229,7 +2313,7 @@ STAGE PLANS:
                   0 _col0 (type: string)
                   1 _col0 (type: string)
                 outputColumnNames: _col0
-                Statistics: Num rows: 262 Data size: 1131 Basic stats: COMPLETE Column stats: COMPLETE
+                Statistics: Num rows: 274 Data size: 1131 Basic stats: COMPLETE Column stats: COMPLETE
                 Group By Operator
                   aggregations: count()
                   keys: _col0 (type: string)
@@ -2327,6 +2411,9 @@ FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT z.key AS key, count(z.value) AS cnt FROM src1 z group by z.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -2334,6 +2421,9 @@ FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT z.key AS key, count(z.value) AS cnt FROM src1 z group by z.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -2490,6 +2580,9 @@ FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT z.key AS key, count(z.value) AS cnt FROM src1 z group by z.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -2497,6 +2590,9 @@ FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT z.key AS key, count(z.value) AS cnt FROM src1 z group by z.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -2669,6 +2765,9 @@ FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT z.key AS key, count(z.value) AS cnt FROM src1 z group by z.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -2676,6 +2775,9 @@ FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT z.key AS key, count(z.value) AS cnt FROM src1 z group by z.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -2832,6 +2934,9 @@ FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT z.key AS key, count(z.value) AS cnt FROM src1 z group by z.key) b
       ON (a.key = b.key)) tmp
 PREHOOK: type: QUERY
+PREHOOK: Input: default@src
+PREHOOK: Input: default@src1
+#### A masked pattern was here ####
 POSTHOOK: query: EXPLAIN
 SELECT SUM(HASH(key1)), SUM(HASH(cnt1)), SUM(HASH(key2)), SUM(HASH(cnt2))
 FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
@@ -2839,6 +2944,9 @@ FROM (SELECT a.key AS key1, a.val AS cnt1, b.key AS key2, b.cnt AS cnt2
       JOIN (SELECT z.key AS key, count(z.value) AS cnt FROM src1 z group by z.key) b
       ON (a.key = b.key)) tmp
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@src
+POSTHOOK: Input: default@src1
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1

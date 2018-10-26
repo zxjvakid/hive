@@ -392,6 +392,10 @@ public class MetastoreConf {
             "tables or partitions to be compacted once they are determined to need compaction.\n" +
             "It will also increase the background load on the Hadoop cluster as more MapReduce jobs\n" +
             "will be running in the background."),
+    COMPACTOR_MINOR_STATS_COMPRESSION(
+        "metastore.compactor.enable.stats.compression",
+        "metastore.compactor.enable.stats.compression", true,
+        "Can be used to disable compression and ORC indexes for files produced by minor compaction."),
     CONNECTION_DRIVER("javax.jdo.option.ConnectionDriverName",
         "javax.jdo.option.ConnectionDriverName", "org.apache.derby.jdbc.EmbeddedDriver",
         "Driver class name for a JDBC metastore"),
@@ -510,11 +514,20 @@ public class MetastoreConf {
             "Alternatively, configure hive.metastore.transactional.event.listeners to ensure both are invoked in same JDO transaction."),
     EVENT_MESSAGE_FACTORY("metastore.event.message.factory",
         "hive.metastore.event.message.factory",
-        "org.apache.hadoop.hive.metastore.messaging.json.JSONMessageFactory",
+        "org.apache.hadoop.hive.metastore.messaging.json.JSONMessageEncoder",
         "Factory class for making encoding and decoding messages in the events generated."),
+    EVENT_NOTIFICATION_PARAMETERS_EXCLUDE_PATTERNS("metastore.notification.parameters.exclude.patterns",
+        "hive.metastore.notification.parameters.exclude.patterns", "",
+        "List of comma-separated regexes that are used to reduced the size of HMS Notification messages."
+            + " The regexes are matched against each key of parameters map in Table or Partition object"
+            + "present in HMS Notification. Any key-value pair whose key is matched with any regex will"
+            +" be removed from Parameters map during Serialization of Table/Partition object."),
     EVENT_DB_LISTENER_TTL("metastore.event.db.listener.timetolive",
         "hive.metastore.event.db.listener.timetolive", 86400, TimeUnit.SECONDS,
         "time after which events will be removed from the database listener queue"),
+    EVENT_DB_LISTENER_CLEAN_INTERVAL("metastore.event.db.listener.clean.interval",
+            "hive.metastore.event.db.listener.clean.interval", 7200, TimeUnit.SECONDS,
+            "sleep interval between each run for cleanup of events from the database listener queue"),
     EVENT_DB_NOTIFICATION_API_AUTH("metastore.metastore.event.db.notification.api.auth",
         "hive.metastore.event.db.notification.api.auth", true,
         "Should metastore do authorization against database notification related APIs such as get_next_notification.\n" +
@@ -648,12 +661,12 @@ public class MetastoreConf {
         "javax.jdo.option.NonTransactionalRead", true,
         "Reads outside of transactions"),
     NOTIFICATION_SEQUENCE_LOCK_MAX_RETRIES("metastore.notification.sequence.lock.max.retries",
-        "hive.notification.sequence.lock.max.retries", 5,
+        "hive.notification.sequence.lock.max.retries", 10,
         "Number of retries required to acquire a lock when getting the next notification sequential ID for entries "
             + "in the NOTIFICATION_LOG table."),
     NOTIFICATION_SEQUENCE_LOCK_RETRY_SLEEP_INTERVAL(
         "metastore.notification.sequence.lock.retry.sleep.interval",
-        "hive.notification.sequence.lock.retry.sleep.interval", 500, TimeUnit.MILLISECONDS,
+        "hive.notification.sequence.lock.retry.sleep.interval", 10, TimeUnit.SECONDS,
         "Sleep interval between retries to acquire a notification lock as described part of property "
             + NOTIFICATION_SEQUENCE_LOCK_MAX_RETRIES.name()),
     ORM_RETRIEVE_MAPNULLS_AS_EMPTY_STRINGS("metastore.orm.retrieveMapNullsAsEmptyStrings",
@@ -1403,6 +1416,28 @@ public class MetastoreConf {
     assert var.defaultVal.getClass() == Boolean.class;
     String val = conf.get(var.varname);
     return val == null ? conf.getBoolean(var.hiveName, (Boolean)var.defaultVal) : Boolean.valueOf(val);
+  }
+
+  /**
+   * Get values from comma-separated config, to an array after extracting individual values.
+   * @param conf Configuration to retrieve it from
+   * @param var variable to retrieve
+   * @return Array of String, containing each value from the comma-separated config,
+   *  or default value if value not in config file
+   */
+  public static String[] getTrimmedStringsVar(Configuration conf, ConfVars var) {
+    assert var.defaultVal.getClass() == String.class;
+    String[] result = conf.getTrimmedStrings(var.varname, (String[]) null);
+    if (result != null) {
+      return result;
+    }
+    if (var.hiveName != null) {
+      result = conf.getTrimmedStrings(var.hiveName, (String[]) null);
+      if (result != null) {
+        return result;
+      }
+    }
+    return org.apache.hadoop.util.StringUtils.getTrimmedStrings((String) var.getDefaultVal());
   }
 
   /**

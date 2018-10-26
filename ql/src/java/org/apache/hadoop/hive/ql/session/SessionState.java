@@ -136,7 +136,7 @@ public class SessionState {
   protected ClassLoader parentLoader;
 
   // Session-scope compile lock.
-  private final ReentrantLock compileLock = new ReentrantLock();
+  private final ReentrantLock compileLock = new ReentrantLock(true);
 
   /**
    * current configuration.
@@ -424,6 +424,8 @@ public class SessionState {
     resourceDownloader = new ResourceDownloader(conf,
         HiveConf.getVar(conf, ConfVars.DOWNLOADED_RESOURCES_DIR));
     killQuery = new NullKillQuery();
+
+    ShimLoader.getHadoopShims().setHadoopSessionContext(getSessionId());
   }
 
   public Map<String, String> getHiveVariables() {

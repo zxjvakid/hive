@@ -389,6 +389,23 @@ class WMPoolSchedulingPolicy:
     "FIFO": 2,
   }
 
+class PartitionFilterMode:
+  BY_NAMES = 0
+  BY_VALUES = 1
+  BY_EXPR = 2
+
+  _VALUES_TO_NAMES = {
+    0: "BY_NAMES",
+    1: "BY_VALUES",
+    2: "BY_EXPR",
+  }
+
+  _NAMES_TO_VALUES = {
+    "BY_NAMES": 0,
+    "BY_VALUES": 1,
+    "BY_EXPR": 2,
+  }
+
 
 class Version:
   """
@@ -4707,6 +4724,7 @@ class StorageDescriptor:
 class Table:
   """
   Attributes:
+   - id
    - tableName
    - dbName
    - owner
@@ -4731,29 +4749,31 @@ class Table:
 
   thrift_spec = (
     None, # 0
-    (1, TType.STRING, 'tableName', None, None, ), # 1
-    (2, TType.STRING, 'dbName', None, None, ), # 2
-    (3, TType.STRING, 'owner', None, None, ), # 3
-    (4, TType.I32, 'createTime', None, None, ), # 4
-    (5, TType.I32, 'lastAccessTime', None, None, ), # 5
-    (6, TType.I32, 'retention', None, None, ), # 6
-    (7, TType.STRUCT, 'sd', (StorageDescriptor, StorageDescriptor.thrift_spec), None, ), # 7
-    (8, TType.LIST, 'partitionKeys', (TType.STRUCT,(FieldSchema, FieldSchema.thrift_spec)), None, ), # 8
-    (9, TType.MAP, 'parameters', (TType.STRING,None,TType.STRING,None), None, ), # 9
-    (10, TType.STRING, 'viewOriginalText', None, None, ), # 10
-    (11, TType.STRING, 'viewExpandedText', None, None, ), # 11
-    (12, TType.STRING, 'tableType', None, None, ), # 12
-    (13, TType.STRUCT, 'privileges', (PrincipalPrivilegeSet, PrincipalPrivilegeSet.thrift_spec), None, ), # 13
-    (14, TType.BOOL, 'temporary', None, False, ), # 14
-    (15, TType.BOOL, 'rewriteEnabled', None, None, ), # 15
-    (16, TType.STRUCT, 'creationMetadata', (CreationMetadata, CreationMetadata.thrift_spec), None, ), # 16
-    (17, TType.STRING, 'catName', None, None, ), # 17
-    (18, TType.I32, 'ownerType', None,     1, ), # 18
-    (19, TType.I64, 'writeId', None, -1, ), # 19
-    (20, TType.BOOL, 'isStatsCompliant', None, None, ), # 20
+    (1, TType.I64, 'id', None, None, ), # 1
+    (2, TType.STRING, 'tableName', None, None, ), # 2
+    (3, TType.STRING, 'dbName', None, None, ), # 3
+    (4, TType.STRING, 'owner', None, None, ), # 4
+    (5, TType.I32, 'createTime', None, None, ), # 5
+    (6, TType.I32, 'lastAccessTime', None, None, ), # 6
+    (7, TType.I32, 'retention', None, None, ), # 7
+    (8, TType.STRUCT, 'sd', (StorageDescriptor, StorageDescriptor.thrift_spec), None, ), # 8
+    (9, TType.LIST, 'partitionKeys', (TType.STRUCT,(FieldSchema, FieldSchema.thrift_spec)), None, ), # 9
+    (10, TType.MAP, 'parameters', (TType.STRING,None,TType.STRING,None), None, ), # 10
+    (11, TType.STRING, 'viewOriginalText', None, None, ), # 11
+    (12, TType.STRING, 'viewExpandedText', None, None, ), # 12
+    (13, TType.STRING, 'tableType', None, None, ), # 13
+    (14, TType.STRUCT, 'privileges', (PrincipalPrivilegeSet, PrincipalPrivilegeSet.thrift_spec), None, ), # 14
+    (15, TType.BOOL, 'temporary', None, False, ), # 15
+    (16, TType.BOOL, 'rewriteEnabled', None, None, ), # 16
+    (17, TType.STRUCT, 'creationMetadata', (CreationMetadata, CreationMetadata.thrift_spec), None, ), # 17
+    (18, TType.STRING, 'catName', None, None, ), # 18
+    (19, TType.I32, 'ownerType', None,     1, ), # 19
+    (20, TType.I64, 'writeId', None, -1, ), # 20
+    (21, TType.BOOL, 'isStatsCompliant', None, None, ), # 21
   )
 
-  def __init__(self, tableName=None, dbName=None, owner=None, createTime=None, lastAccessTime=None, retention=None, sd=None, partitionKeys=None, parameters=None, viewOriginalText=None, viewExpandedText=None, tableType=None, privileges=None, temporary=thrift_spec[14][4], rewriteEnabled=None, creationMetadata=None, catName=None, ownerType=thrift_spec[18][4], writeId=thrift_spec[19][4], isStatsCompliant=None,):
+  def __init__(self, id=None, tableName=None, dbName=None, owner=None, createTime=None, lastAccessTime=None, retention=None, sd=None, partitionKeys=None, parameters=None, viewOriginalText=None, viewExpandedText=None, tableType=None, privileges=None, temporary=thrift_spec[15][4], rewriteEnabled=None, creationMetadata=None, catName=None, ownerType=thrift_spec[19][4], writeId=thrift_spec[20][4], isStatsCompliant=None,):
+    self.id = id
     self.tableName = tableName
     self.dbName = dbName
     self.owner = owner
@@ -4785,42 +4805,47 @@ class Table:
       if ftype == TType.STOP:
         break
       if fid == 1:
-        if ftype == TType.STRING:
-          self.tableName = iprot.readString()
+        if ftype == TType.I64:
+          self.id = iprot.readI64()
         else:
           iprot.skip(ftype)
       elif fid == 2:
         if ftype == TType.STRING:
-          self.dbName = iprot.readString()
+          self.tableName = iprot.readString()
         else:
           iprot.skip(ftype)
       elif fid == 3:
         if ftype == TType.STRING:
-          self.owner = iprot.readString()
+          self.dbName = iprot.readString()
         else:
           iprot.skip(ftype)
       elif fid == 4:
-        if ftype == TType.I32:
-          self.createTime = iprot.readI32()
+        if ftype == TType.STRING:
+          self.owner = iprot.readString()
         else:
           iprot.skip(ftype)
       elif fid == 5:
         if ftype == TType.I32:
-          self.lastAccessTime = iprot.readI32()
+          self.createTime = iprot.readI32()
         else:
           iprot.skip(ftype)
       elif fid == 6:
         if ftype == TType.I32:
-          self.retention = iprot.readI32()
+          self.lastAccessTime = iprot.readI32()
         else:
           iprot.skip(ftype)
       elif fid == 7:
+        if ftype == TType.I32:
+          self.retention = iprot.readI32()
+        else:
+          iprot.skip(ftype)
+      elif fid == 8:
         if ftype == TType.STRUCT:
           self.sd = StorageDescriptor()
           self.sd.read(iprot)
         else:
           iprot.skip(ftype)
-      elif fid == 8:
+      elif fid == 9:
         if ftype == TType.LIST:
           self.partitionKeys = []
           (_etype185, _size182) = iprot.readListBegin()
@@ -4831,7 +4856,7 @@ class Table:
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
-      elif fid == 9:
+      elif fid == 10:
         if ftype == TType.MAP:
           self.parameters = {}
           (_ktype189, _vtype190, _size188 ) = iprot.readMapBegin()
@@ -4842,59 +4867,59 @@ class Table:
           iprot.readMapEnd()
         else:
           iprot.skip(ftype)
-      elif fid == 10:
+      elif fid == 11:
         if ftype == TType.STRING:
           self.viewOriginalText = iprot.readString()
         else:
           iprot.skip(ftype)
-      elif fid == 11:
+      elif fid == 12:
         if ftype == TType.STRING:
           self.viewExpandedText = iprot.readString()
         else:
           iprot.skip(ftype)
-      elif fid == 12:
+      elif fid == 13:
         if ftype == TType.STRING:
           self.tableType = iprot.readString()
         else:
           iprot.skip(ftype)
-      elif fid == 13:
+      elif fid == 14:
         if ftype == TType.STRUCT:
           self.privileges = PrincipalPrivilegeSet()
           self.privileges.read(iprot)
         else:
           iprot.skip(ftype)
-      elif fid == 14:
+      elif fid == 15:
         if ftype == TType.BOOL:
           self.temporary = iprot.readBool()
         else:
           iprot.skip(ftype)
-      elif fid == 15:
+      elif fid == 16:
         if ftype == TType.BOOL:
           self.rewriteEnabled = iprot.readBool()
         else:
           iprot.skip(ftype)
-      elif fid == 16:
+      elif fid == 17:
         if ftype == TType.STRUCT:
           self.creationMetadata = CreationMetadata()
           self.creationMetadata.read(iprot)
         else:
           iprot.skip(ftype)
-      elif fid == 17:
+      elif fid == 18:
         if ftype == TType.STRING:
           self.catName = iprot.readString()
         else:
           iprot.skip(ftype)
-      elif fid == 18:
+      elif fid == 19:
         if ftype == TType.I32:
           self.ownerType = iprot.readI32()
         else:
           iprot.skip(ftype)
-      elif fid == 19:
+      elif fid == 20:
         if ftype == TType.I64:
           self.writeId = iprot.readI64()
         else:
           iprot.skip(ftype)
-      elif fid == 20:
+      elif fid == 21:
         if ftype == TType.BOOL:
           self.isStatsCompliant = iprot.readBool()
         else:
@@ -4909,43 +4934,47 @@ class Table:
       oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
       return
     oprot.writeStructBegin('Table')
+    if self.id is not None:
+      oprot.writeFieldBegin('id', TType.I64, 1)
+      oprot.writeI64(self.id)
+      oprot.writeFieldEnd()
     if self.tableName is not None:
-      oprot.writeFieldBegin('tableName', TType.STRING, 1)
+      oprot.writeFieldBegin('tableName', TType.STRING, 2)
       oprot.writeString(self.tableName)
       oprot.writeFieldEnd()
     if self.dbName is not None:
-      oprot.writeFieldBegin('dbName', TType.STRING, 2)
+      oprot.writeFieldBegin('dbName', TType.STRING, 3)
       oprot.writeString(self.dbName)
       oprot.writeFieldEnd()
     if self.owner is not None:
-      oprot.writeFieldBegin('owner', TType.STRING, 3)
+      oprot.writeFieldBegin('owner', TType.STRING, 4)
       oprot.writeString(self.owner)
       oprot.writeFieldEnd()
     if self.createTime is not None:
-      oprot.writeFieldBegin('createTime', TType.I32, 4)
+      oprot.writeFieldBegin('createTime', TType.I32, 5)
       oprot.writeI32(self.createTime)
       oprot.writeFieldEnd()
     if self.lastAccessTime is not None:
-      oprot.writeFieldBegin('lastAccessTime', TType.I32, 5)
+      oprot.writeFieldBegin('lastAccessTime', TType.I32, 6)
       oprot.writeI32(self.lastAccessTime)
       oprot.writeFieldEnd()
     if self.retention is not None:
-      oprot.writeFieldBegin('retention', TType.I32, 6)
+      oprot.writeFieldBegin('retention', TType.I32, 7)
       oprot.writeI32(self.retention)
       oprot.writeFieldEnd()
     if self.sd is not None:
-      oprot.writeFieldBegin('sd', TType.STRUCT, 7)
+      oprot.writeFieldBegin('sd', TType.STRUCT, 8)
       self.sd.write(oprot)
       oprot.writeFieldEnd()
     if self.partitionKeys is not None:
-      oprot.writeFieldBegin('partitionKeys', TType.LIST, 8)
+      oprot.writeFieldBegin('partitionKeys', TType.LIST, 9)
       oprot.writeListBegin(TType.STRUCT, len(self.partitionKeys))
       for iter195 in self.partitionKeys:
         iter195.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
     if self.parameters is not None:
-      oprot.writeFieldBegin('parameters', TType.MAP, 9)
+      oprot.writeFieldBegin('parameters', TType.MAP, 10)
       oprot.writeMapBegin(TType.STRING, TType.STRING, len(self.parameters))
       for kiter196,viter197 in self.parameters.items():
         oprot.writeString(kiter196)
@@ -4953,47 +4982,47 @@ class Table:
       oprot.writeMapEnd()
       oprot.writeFieldEnd()
     if self.viewOriginalText is not None:
-      oprot.writeFieldBegin('viewOriginalText', TType.STRING, 10)
+      oprot.writeFieldBegin('viewOriginalText', TType.STRING, 11)
       oprot.writeString(self.viewOriginalText)
       oprot.writeFieldEnd()
     if self.viewExpandedText is not None:
-      oprot.writeFieldBegin('viewExpandedText', TType.STRING, 11)
+      oprot.writeFieldBegin('viewExpandedText', TType.STRING, 12)
       oprot.writeString(self.viewExpandedText)
       oprot.writeFieldEnd()
     if self.tableType is not None:
-      oprot.writeFieldBegin('tableType', TType.STRING, 12)
+      oprot.writeFieldBegin('tableType', TType.STRING, 13)
       oprot.writeString(self.tableType)
       oprot.writeFieldEnd()
     if self.privileges is not None:
-      oprot.writeFieldBegin('privileges', TType.STRUCT, 13)
+      oprot.writeFieldBegin('privileges', TType.STRUCT, 14)
       self.privileges.write(oprot)
       oprot.writeFieldEnd()
     if self.temporary is not None:
-      oprot.writeFieldBegin('temporary', TType.BOOL, 14)
+      oprot.writeFieldBegin('temporary', TType.BOOL, 15)
       oprot.writeBool(self.temporary)
       oprot.writeFieldEnd()
     if self.rewriteEnabled is not None:
-      oprot.writeFieldBegin('rewriteEnabled', TType.BOOL, 15)
+      oprot.writeFieldBegin('rewriteEnabled', TType.BOOL, 16)
       oprot.writeBool(self.rewriteEnabled)
       oprot.writeFieldEnd()
     if self.creationMetadata is not None:
-      oprot.writeFieldBegin('creationMetadata', TType.STRUCT, 16)
+      oprot.writeFieldBegin('creationMetadata', TType.STRUCT, 17)
       self.creationMetadata.write(oprot)
       oprot.writeFieldEnd()
     if self.catName is not None:
-      oprot.writeFieldBegin('catName', TType.STRING, 17)
+      oprot.writeFieldBegin('catName', TType.STRING, 18)
       oprot.writeString(self.catName)
       oprot.writeFieldEnd()
     if self.ownerType is not None:
-      oprot.writeFieldBegin('ownerType', TType.I32, 18)
+      oprot.writeFieldBegin('ownerType', TType.I32, 19)
       oprot.writeI32(self.ownerType)
       oprot.writeFieldEnd()
     if self.writeId is not None:
-      oprot.writeFieldBegin('writeId', TType.I64, 19)
+      oprot.writeFieldBegin('writeId', TType.I64, 20)
       oprot.writeI64(self.writeId)
       oprot.writeFieldEnd()
     if self.isStatsCompliant is not None:
-      oprot.writeFieldBegin('isStatsCompliant', TType.BOOL, 20)
+      oprot.writeFieldBegin('isStatsCompliant', TType.BOOL, 21)
       oprot.writeBool(self.isStatsCompliant)
       oprot.writeFieldEnd()
     oprot.writeFieldStop()
@@ -5005,6 +5034,7 @@ class Table:
 
   def __hash__(self):
     value = 17
+    value = (value * 31) ^ hash(self.id)
     value = (value * 31) ^ hash(self.tableName)
     value = (value * 31) ^ hash(self.dbName)
     value = (value * 31) ^ hash(self.owner)
@@ -12007,12 +12037,110 @@ class AbortTxnsRequest:
   def __ne__(self, other):
     return not (self == other)
 
+class CommitTxnKeyValue:
+  """
+  Attributes:
+   - tableId
+   - key
+   - value
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.I64, 'tableId', None, None, ), # 1
+    (2, TType.STRING, 'key', None, None, ), # 2
+    (3, TType.STRING, 'value', None, None, ), # 3
+  )
+
+  def __init__(self, tableId=None, key=None, value=None,):
+    self.tableId = tableId
+    self.key = key
+    self.value = value
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.I64:
+          self.tableId = iprot.readI64()
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.STRING:
+          self.key = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 3:
+        if ftype == TType.STRING:
+          self.value = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('CommitTxnKeyValue')
+    if self.tableId is not None:
+      oprot.writeFieldBegin('tableId', TType.I64, 1)
+      oprot.writeI64(self.tableId)
+      oprot.writeFieldEnd()
+    if self.key is not None:
+      oprot.writeFieldBegin('key', TType.STRING, 2)
+      oprot.writeString(self.key)
+      oprot.writeFieldEnd()
+    if self.value is not None:
+      oprot.writeFieldBegin('value', TType.STRING, 3)
+      oprot.writeString(self.value)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    if self.tableId is None:
+      raise TProtocol.TProtocolException(message='Required field tableId is unset!')
+    if self.key is None:
+      raise TProtocol.TProtocolException(message='Required field key is unset!')
+    if self.value is None:
+      raise TProtocol.TProtocolException(message='Required field value is unset!')
+    return
+
+
+  def __hash__(self):
+    value = 17
+    value = (value * 31) ^ hash(self.tableId)
+    value = (value * 31) ^ hash(self.key)
+    value = (value * 31) ^ hash(self.value)
+    return value
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
 class CommitTxnRequest:
   """
   Attributes:
    - txnid
    - replPolicy
    - writeEventInfos
+   - keyValue
   """
 
   thrift_spec = (
@@ -12020,12 +12148,14 @@ class CommitTxnRequest:
     (1, TType.I64, 'txnid', None, None, ), # 1
     (2, TType.STRING, 'replPolicy', None, None, ), # 2
     (3, TType.LIST, 'writeEventInfos', (TType.STRUCT,(WriteEventInfo, WriteEventInfo.thrift_spec)), None, ), # 3
+    (4, TType.STRUCT, 'keyValue', (CommitTxnKeyValue, CommitTxnKeyValue.thrift_spec), None, ), # 4
   )
 
-  def __init__(self, txnid=None, replPolicy=None, writeEventInfos=None,):
+  def __init__(self, txnid=None, replPolicy=None, writeEventInfos=None, keyValue=None,):
     self.txnid = txnid
     self.replPolicy = replPolicy
     self.writeEventInfos = writeEventInfos
+    self.keyValue = keyValue
 
   def read(self, iprot):
     if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
@@ -12057,6 +12187,12 @@ class CommitTxnRequest:
           iprot.readListEnd()
         else:
           iprot.skip(ftype)
+      elif fid == 4:
+        if ftype == TType.STRUCT:
+          self.keyValue = CommitTxnKeyValue()
+          self.keyValue.read(iprot)
+        else:
+          iprot.skip(ftype)
       else:
         iprot.skip(ftype)
       iprot.readFieldEnd()
@@ -12082,6 +12218,10 @@ class CommitTxnRequest:
         iter536.write(oprot)
       oprot.writeListEnd()
       oprot.writeFieldEnd()
+    if self.keyValue is not None:
+      oprot.writeFieldBegin('keyValue', TType.STRUCT, 4)
+      self.keyValue.write(oprot)
+      oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()
 
@@ -12096,6 +12236,7 @@ class CommitTxnRequest:
     value = (value * 31) ^ hash(self.txnid)
     value = (value * 31) ^ hash(self.replPolicy)
     value = (value * 31) ^ hash(self.writeEventInfos)
+    value = (value * 31) ^ hash(self.keyValue)
     return value
 
   def __repr__(self):
@@ -15673,6 +15814,8 @@ class NotificationEventsCountRequest:
    - fromEventId
    - dbName
    - catName
+   - toEventId
+   - limit
   """
 
   thrift_spec = (
@@ -15680,12 +15823,16 @@ class NotificationEventsCountRequest:
     (1, TType.I64, 'fromEventId', None, None, ), # 1
     (2, TType.STRING, 'dbName', None, None, ), # 2
     (3, TType.STRING, 'catName', None, None, ), # 3
+    (4, TType.I64, 'toEventId', None, None, ), # 4
+    (5, TType.I64, 'limit', None, None, ), # 5
   )
 
-  def __init__(self, fromEventId=None, dbName=None, catName=None,):
+  def __init__(self, fromEventId=None, dbName=None, catName=None, toEventId=None, limit=None,):
     self.fromEventId = fromEventId
     self.dbName = dbName
     self.catName = catName
+    self.toEventId = toEventId
+    self.limit = limit
 
   def read(self, iprot):
     if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
@@ -15711,6 +15858,16 @@ class NotificationEventsCountRequest:
           self.catName = iprot.readString()
         else:
           iprot.skip(ftype)
+      elif fid == 4:
+        if ftype == TType.I64:
+          self.toEventId = iprot.readI64()
+        else:
+          iprot.skip(ftype)
+      elif fid == 5:
+        if ftype == TType.I64:
+          self.limit = iprot.readI64()
+        else:
+          iprot.skip(ftype)
       else:
         iprot.skip(ftype)
       iprot.readFieldEnd()
@@ -15733,6 +15890,14 @@ class NotificationEventsCountRequest:
       oprot.writeFieldBegin('catName', TType.STRING, 3)
       oprot.writeString(self.catName)
       oprot.writeFieldEnd()
+    if self.toEventId is not None:
+      oprot.writeFieldBegin('toEventId', TType.I64, 4)
+      oprot.writeI64(self.toEventId)
+      oprot.writeFieldEnd()
+    if self.limit is not None:
+      oprot.writeFieldBegin('limit', TType.I64, 5)
+      oprot.writeI64(self.limit)
+      oprot.writeFieldEnd()
     oprot.writeFieldStop()
     oprot.writeStructEnd()
 
@@ -15749,6 +15914,8 @@ class NotificationEventsCountRequest:
     value = (value * 31) ^ hash(self.fromEventId)
     value = (value * 31) ^ hash(self.dbName)
     value = (value * 31) ^ hash(self.catName)
+    value = (value * 31) ^ hash(self.toEventId)
+    value = (value * 31) ^ hash(self.limit)
     return value
 
   def __repr__(self):
@@ -23091,6 +23258,437 @@ class AlterTableResponse:
 
   def __hash__(self):
     value = 17
+    return value
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class GetPartitionsProjectionSpec:
+  """
+  Attributes:
+   - fieldList
+   - includeParamKeyPattern
+   - excludeParamKeyPattern
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.LIST, 'fieldList', (TType.STRING,None), None, ), # 1
+    (2, TType.STRING, 'includeParamKeyPattern', None, None, ), # 2
+    (3, TType.STRING, 'excludeParamKeyPattern', None, None, ), # 3
+  )
+
+  def __init__(self, fieldList=None, includeParamKeyPattern=None, excludeParamKeyPattern=None,):
+    self.fieldList = fieldList
+    self.includeParamKeyPattern = includeParamKeyPattern
+    self.excludeParamKeyPattern = excludeParamKeyPattern
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.LIST:
+          self.fieldList = []
+          (_etype854, _size851) = iprot.readListBegin()
+          for _i855 in xrange(_size851):
+            _elem856 = iprot.readString()
+            self.fieldList.append(_elem856)
+          iprot.readListEnd()
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.STRING:
+          self.includeParamKeyPattern = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 3:
+        if ftype == TType.STRING:
+          self.excludeParamKeyPattern = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('GetPartitionsProjectionSpec')
+    if self.fieldList is not None:
+      oprot.writeFieldBegin('fieldList', TType.LIST, 1)
+      oprot.writeListBegin(TType.STRING, len(self.fieldList))
+      for iter857 in self.fieldList:
+        oprot.writeString(iter857)
+      oprot.writeListEnd()
+      oprot.writeFieldEnd()
+    if self.includeParamKeyPattern is not None:
+      oprot.writeFieldBegin('includeParamKeyPattern', TType.STRING, 2)
+      oprot.writeString(self.includeParamKeyPattern)
+      oprot.writeFieldEnd()
+    if self.excludeParamKeyPattern is not None:
+      oprot.writeFieldBegin('excludeParamKeyPattern', TType.STRING, 3)
+      oprot.writeString(self.excludeParamKeyPattern)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    return
+
+
+  def __hash__(self):
+    value = 17
+    value = (value * 31) ^ hash(self.fieldList)
+    value = (value * 31) ^ hash(self.includeParamKeyPattern)
+    value = (value * 31) ^ hash(self.excludeParamKeyPattern)
+    return value
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class GetPartitionsFilterSpec:
+  """
+  Attributes:
+   - filterMode
+   - filters
+  """
+
+  thrift_spec = (
+    None, # 0
+    None, # 1
+    None, # 2
+    None, # 3
+    None, # 4
+    None, # 5
+    None, # 6
+    (7, TType.I32, 'filterMode', None, None, ), # 7
+    (8, TType.LIST, 'filters', (TType.STRING,None), None, ), # 8
+  )
+
+  def __init__(self, filterMode=None, filters=None,):
+    self.filterMode = filterMode
+    self.filters = filters
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 7:
+        if ftype == TType.I32:
+          self.filterMode = iprot.readI32()
+        else:
+          iprot.skip(ftype)
+      elif fid == 8:
+        if ftype == TType.LIST:
+          self.filters = []
+          (_etype861, _size858) = iprot.readListBegin()
+          for _i862 in xrange(_size858):
+            _elem863 = iprot.readString()
+            self.filters.append(_elem863)
+          iprot.readListEnd()
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('GetPartitionsFilterSpec')
+    if self.filterMode is not None:
+      oprot.writeFieldBegin('filterMode', TType.I32, 7)
+      oprot.writeI32(self.filterMode)
+      oprot.writeFieldEnd()
+    if self.filters is not None:
+      oprot.writeFieldBegin('filters', TType.LIST, 8)
+      oprot.writeListBegin(TType.STRING, len(self.filters))
+      for iter864 in self.filters:
+        oprot.writeString(iter864)
+      oprot.writeListEnd()
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    return
+
+
+  def __hash__(self):
+    value = 17
+    value = (value * 31) ^ hash(self.filterMode)
+    value = (value * 31) ^ hash(self.filters)
+    return value
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class GetPartitionsResponse:
+  """
+  Attributes:
+   - partitionSpec
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.LIST, 'partitionSpec', (TType.STRUCT,(PartitionSpec, PartitionSpec.thrift_spec)), None, ), # 1
+  )
+
+  def __init__(self, partitionSpec=None,):
+    self.partitionSpec = partitionSpec
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.LIST:
+          self.partitionSpec = []
+          (_etype868, _size865) = iprot.readListBegin()
+          for _i869 in xrange(_size865):
+            _elem870 = PartitionSpec()
+            _elem870.read(iprot)
+            self.partitionSpec.append(_elem870)
+          iprot.readListEnd()
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('GetPartitionsResponse')
+    if self.partitionSpec is not None:
+      oprot.writeFieldBegin('partitionSpec', TType.LIST, 1)
+      oprot.writeListBegin(TType.STRUCT, len(self.partitionSpec))
+      for iter871 in self.partitionSpec:
+        iter871.write(oprot)
+      oprot.writeListEnd()
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    return
+
+
+  def __hash__(self):
+    value = 17
+    value = (value * 31) ^ hash(self.partitionSpec)
+    return value
+
+  def __repr__(self):
+    L = ['%s=%r' % (key, value)
+      for key, value in self.__dict__.iteritems()]
+    return '%s(%s)' % (self.__class__.__name__, ', '.join(L))
+
+  def __eq__(self, other):
+    return isinstance(other, self.__class__) and self.__dict__ == other.__dict__
+
+  def __ne__(self, other):
+    return not (self == other)
+
+class GetPartitionsRequest:
+  """
+  Attributes:
+   - catName
+   - dbName
+   - tblName
+   - withAuth
+   - user
+   - groupNames
+   - projectionSpec
+   - filterSpec
+  """
+
+  thrift_spec = (
+    None, # 0
+    (1, TType.STRING, 'catName', None, None, ), # 1
+    (2, TType.STRING, 'dbName', None, None, ), # 2
+    (3, TType.STRING, 'tblName', None, None, ), # 3
+    (4, TType.BOOL, 'withAuth', None, None, ), # 4
+    (5, TType.STRING, 'user', None, None, ), # 5
+    (6, TType.LIST, 'groupNames', (TType.STRING,None), None, ), # 6
+    (7, TType.STRUCT, 'projectionSpec', (GetPartitionsProjectionSpec, GetPartitionsProjectionSpec.thrift_spec), None, ), # 7
+    (8, TType.STRUCT, 'filterSpec', (GetPartitionsFilterSpec, GetPartitionsFilterSpec.thrift_spec), None, ), # 8
+  )
+
+  def __init__(self, catName=None, dbName=None, tblName=None, withAuth=None, user=None, groupNames=None, projectionSpec=None, filterSpec=None,):
+    self.catName = catName
+    self.dbName = dbName
+    self.tblName = tblName
+    self.withAuth = withAuth
+    self.user = user
+    self.groupNames = groupNames
+    self.projectionSpec = projectionSpec
+    self.filterSpec = filterSpec
+
+  def read(self, iprot):
+    if iprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and isinstance(iprot.trans, TTransport.CReadableTransport) and self.thrift_spec is not None and fastbinary is not None:
+      fastbinary.decode_binary(self, iprot.trans, (self.__class__, self.thrift_spec))
+      return
+    iprot.readStructBegin()
+    while True:
+      (fname, ftype, fid) = iprot.readFieldBegin()
+      if ftype == TType.STOP:
+        break
+      if fid == 1:
+        if ftype == TType.STRING:
+          self.catName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 2:
+        if ftype == TType.STRING:
+          self.dbName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 3:
+        if ftype == TType.STRING:
+          self.tblName = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 4:
+        if ftype == TType.BOOL:
+          self.withAuth = iprot.readBool()
+        else:
+          iprot.skip(ftype)
+      elif fid == 5:
+        if ftype == TType.STRING:
+          self.user = iprot.readString()
+        else:
+          iprot.skip(ftype)
+      elif fid == 6:
+        if ftype == TType.LIST:
+          self.groupNames = []
+          (_etype875, _size872) = iprot.readListBegin()
+          for _i876 in xrange(_size872):
+            _elem877 = iprot.readString()
+            self.groupNames.append(_elem877)
+          iprot.readListEnd()
+        else:
+          iprot.skip(ftype)
+      elif fid == 7:
+        if ftype == TType.STRUCT:
+          self.projectionSpec = GetPartitionsProjectionSpec()
+          self.projectionSpec.read(iprot)
+        else:
+          iprot.skip(ftype)
+      elif fid == 8:
+        if ftype == TType.STRUCT:
+          self.filterSpec = GetPartitionsFilterSpec()
+          self.filterSpec.read(iprot)
+        else:
+          iprot.skip(ftype)
+      else:
+        iprot.skip(ftype)
+      iprot.readFieldEnd()
+    iprot.readStructEnd()
+
+  def write(self, oprot):
+    if oprot.__class__ == TBinaryProtocol.TBinaryProtocolAccelerated and self.thrift_spec is not None and fastbinary is not None:
+      oprot.trans.write(fastbinary.encode_binary(self, (self.__class__, self.thrift_spec)))
+      return
+    oprot.writeStructBegin('GetPartitionsRequest')
+    if self.catName is not None:
+      oprot.writeFieldBegin('catName', TType.STRING, 1)
+      oprot.writeString(self.catName)
+      oprot.writeFieldEnd()
+    if self.dbName is not None:
+      oprot.writeFieldBegin('dbName', TType.STRING, 2)
+      oprot.writeString(self.dbName)
+      oprot.writeFieldEnd()
+    if self.tblName is not None:
+      oprot.writeFieldBegin('tblName', TType.STRING, 3)
+      oprot.writeString(self.tblName)
+      oprot.writeFieldEnd()
+    if self.withAuth is not None:
+      oprot.writeFieldBegin('withAuth', TType.BOOL, 4)
+      oprot.writeBool(self.withAuth)
+      oprot.writeFieldEnd()
+    if self.user is not None:
+      oprot.writeFieldBegin('user', TType.STRING, 5)
+      oprot.writeString(self.user)
+      oprot.writeFieldEnd()
+    if self.groupNames is not None:
+      oprot.writeFieldBegin('groupNames', TType.LIST, 6)
+      oprot.writeListBegin(TType.STRING, len(self.groupNames))
+      for iter878 in self.groupNames:
+        oprot.writeString(iter878)
+      oprot.writeListEnd()
+      oprot.writeFieldEnd()
+    if self.projectionSpec is not None:
+      oprot.writeFieldBegin('projectionSpec', TType.STRUCT, 7)
+      self.projectionSpec.write(oprot)
+      oprot.writeFieldEnd()
+    if self.filterSpec is not None:
+      oprot.writeFieldBegin('filterSpec', TType.STRUCT, 8)
+      self.filterSpec.write(oprot)
+      oprot.writeFieldEnd()
+    oprot.writeFieldStop()
+    oprot.writeStructEnd()
+
+  def validate(self):
+    return
+
+
+  def __hash__(self):
+    value = 17
+    value = (value * 31) ^ hash(self.catName)
+    value = (value * 31) ^ hash(self.dbName)
+    value = (value * 31) ^ hash(self.tblName)
+    value = (value * 31) ^ hash(self.withAuth)
+    value = (value * 31) ^ hash(self.user)
+    value = (value * 31) ^ hash(self.groupNames)
+    value = (value * 31) ^ hash(self.projectionSpec)
+    value = (value * 31) ^ hash(self.filterSpec)
     return value
 
   def __repr__(self):

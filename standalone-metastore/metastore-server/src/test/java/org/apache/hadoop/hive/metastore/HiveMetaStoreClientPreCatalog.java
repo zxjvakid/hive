@@ -50,6 +50,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.security.auth.login.LoginException;
 
+import com.google.common.base.Preconditions;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -2278,6 +2279,19 @@ public class HiveMetaStoreClientPreCatalog implements IMetaStoreClient, AutoClos
   }
 
   @Override
+  public void commitTxnWithKeyValue(long txnid, long tableId, String key,
+      String value) throws NoSuchTxnException,
+      TxnAbortedException, TException {
+    CommitTxnRequest ctr = new CommitTxnRequest(txnid);
+    Preconditions.checkNotNull(key, "The key to commit together"
+        + " with the transaction can't be null");
+    Preconditions.checkNotNull(value, "The value to commit together"
+        + " with the transaction can't be null");
+    ctr.setKeyValue(new CommitTxnKeyValue(tableId, key, value));
+    client.commit_txn(ctr);
+  }
+
+  @Override
   public void replCommitTxn(CommitTxnRequest rqst)
           throws NoSuchTxnException, TxnAbortedException, TException {
     client.commit_txn(rqst);
@@ -3534,6 +3548,12 @@ public class HiveMetaStoreClientPreCatalog implements IMetaStoreClient, AutoClos
   @Override
   public void truncateTable(String dbName, String tableName,
       List<String> partNames, String validWriteIds, long writeId)
+      throws TException {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public GetPartitionsResponse getPartitionsWithSpecs(GetPartitionsRequest request)
       throws TException {
     throw new UnsupportedOperationException();
   }

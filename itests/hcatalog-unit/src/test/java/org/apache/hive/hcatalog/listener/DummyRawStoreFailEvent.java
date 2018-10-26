@@ -19,6 +19,8 @@
 package org.apache.hive.hcatalog.listener;
 
 import org.apache.hadoop.hive.common.TableName;
+import org.apache.hadoop.hive.metastore.api.GetPartitionsFilterSpec;
+import org.apache.hadoop.hive.metastore.api.GetPartitionsProjectionSpec;
 import org.apache.hadoop.hive.metastore.api.ISchemaName;
 import org.apache.hadoop.hive.metastore.api.SchemaVersionDescriptor;
 import org.apache.hadoop.hive.metastore.api.Catalog;
@@ -410,6 +412,13 @@ public class DummyRawStoreFailEvent implements RawStore, Configurable {
   public List<Partition> getPartitionsByFilter(String catName, String dbName, String tblName,
                                                String filter, short maxParts) throws MetaException, NoSuchObjectException {
     return objectStore.getPartitionsByFilter(catName, dbName, tblName, filter, maxParts);
+  }
+
+  @Override
+  public List<Partition> getPartitionSpecsByFilterAndProjection(Table table,
+      GetPartitionsProjectionSpec projectionSpec, GetPartitionsFilterSpec filterSpec)
+      throws MetaException, NoSuchObjectException {
+    return objectStore.getPartitionSpecsByFilterAndProjection(table, projectionSpec, filterSpec);
   }
 
   @Override

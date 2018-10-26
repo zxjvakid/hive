@@ -424,26 +424,28 @@ struct StorageDescriptor {
 
 // table information
 struct Table {
-  1: string tableName,                // name of the table
-  2: string dbName,                   // database name ('default')
-  3: string owner,                    // owner of this table
-  4: i32    createTime,               // creation time of the table
-  5: i32    lastAccessTime,           // last access time (usually this will be filled from HDFS and shouldn't be relied on)
-  6: i32    retention,                // retention time
-  7: StorageDescriptor sd,            // storage descriptor of the table
-  8: list<FieldSchema> partitionKeys, // partition keys of the table. only primitive types are supported
-  9: map<string, string> parameters,   // to store comments or any other user level parameters
-  10: string viewOriginalText,         // original view text, null for non-view
-  11: string viewExpandedText,         // expanded view text, null for non-view
-  12: string tableType,                // table type enum, e.g. EXTERNAL_TABLE
-  13: optional PrincipalPrivilegeSet privileges,
-  14: optional bool temporary=false,
-  15: optional bool rewriteEnabled,     // rewrite enabled or not
-  16: optional CreationMetadata creationMetadata,   // only for MVs, it stores table names used and txn list at MV creation
-  17: optional string catName,          // Name of the catalog the table is in
-  18: optional PrincipalType ownerType = PrincipalType.USER, // owner type of this table (default to USER for backward compatibility)
-  19: optional i64 writeId=-1,
-  20: optional bool isStatsCompliant
+  1: optional i64 id,                 // id of the table. It will be ignored if set. It's only for
+                                      // read purposed
+  2: string tableName,                // name of the table
+  3: string dbName,                   // database name ('default')
+  4: string owner,                    // owner of this table
+  5: i32    createTime,               // creation time of the table
+  6: i32    lastAccessTime,           // last access time (usually this will be filled from HDFS and shouldn't be relied on)
+  7: i32    retention,                // retention time
+  8: StorageDescriptor sd,            // storage descriptor of the table
+  9: list<FieldSchema> partitionKeys, // partition keys of the table. only primitive types are supported
+  10: map<string, string> parameters,   // to store comments or any other user level parameters
+  11: string viewOriginalText,         // original view text, null for non-view
+  12: string viewExpandedText,         // expanded view text, null for non-view
+  13: string tableType,                // table type enum, e.g. EXTERNAL_TABLE
+  14: optional PrincipalPrivilegeSet privileges,
+  15: optional bool temporary=false,
+  16: optional bool rewriteEnabled,     // rewrite enabled or not
+  17: optional CreationMetadata creationMetadata,   // only for MVs, it stores table names used and txn list at MV creation
+  18: optional string catName,          // Name of the catalog the table is in
+  19: optional PrincipalType ownerType = PrincipalType.USER, // owner type of this table (default to USER for backward compatibility)
+  20: optional i64 writeId=-1,
+  21: optional bool isStatsCompliant
 }
 
 struct Partition {
@@ -896,11 +898,20 @@ struct AbortTxnsRequest {
     1: required list<i64> txn_ids,
 }
 
+struct CommitTxnKeyValue {
+    1: required i64 tableId,
+    2: required string key,
+    3: required string value,
+}
+
 struct CommitTxnRequest {
     1: required i64 txnid,
     2: optional string replPolicy,
     // Information related to write operations done in this transaction.
     3: optional list<WriteEventInfo> writeEventInfos,
+
+    // An optional key/value to store atomically with the transaction
+    4: optional CommitTxnKeyValue keyValue,
 }
 
 struct WriteEventInfo {
@@ -1136,7 +1147,9 @@ struct CurrentNotificationEventId {
 struct NotificationEventsCountRequest {
     1: required i64 fromEventId,
     2: required string dbName,
-    3: optional string catName
+    3: optional string catName,
+    4: optional i64 toEventId,
+    5: optional i64 limit
 }
 
 struct NotificationEventsCountResponse {
@@ -1641,6 +1654,67 @@ struct AlterTableRequest {
 }
 
 struct AlterTableResponse {
+}
+
+/*
+ * Generic Partition request API, providing different kinds of filtering and controlling output.
+ *
+ * The API entry point is get_partitions_with_specs(), which is based on a single
+ * request/response object model.
+ *
+ * The request (GetPartitionsRequest) defines any filtering that should be done for partitions
+ * as well as the list of fields that should be returned (this is called ProjectionSpec).
+ * Projection is simply a list of dot separated strings which represent the fields which should
+ * be returned. Projection may also include whitelist or blacklist of parameters to include in
+ * the partition. When both blacklist and whitelist are present, the blacklist supersedes the
+ * whitelist in case of conflicts.
+ *
+ * Partition filter spec is the generalization of various types of partition filtering.
+ * Partitions can be filtered by names, by values or by partition expressions.
+ */
+
+struct GetPartitionsProjectionSpec {
+   // fieldList is a list of dot separated strings which represent the fields which must be returned.
+   // Any other field which is not in the fieldList may be unset in the returned partitions (it
+   //   is up to the implementation to decide whether it chooses to include or exclude such fields).
+   // E.g. setting the field list to sd.location, serdeInfo.name, sd.cols.name, sd.cols.type will
+   // return partitions which will have location field set in the storage descriptor. Also the serdeInfo
+   // in the returned storage descriptor will only have name field set. This applies to multi-valued
+   // fields as well like sd.cols, so in the example above only name and type fields will be set for sd.cols.
+   // If the fieldList is empty or not present, all the fields will be set
+   1: list<string> fieldList;
+   // SQL-92 compliant regex pattern for param keys to be included
+   // _ or % wildcards are supported. '_' represent one character and '%' represents 0 or more characters
+   2: string includeParamKeyPattern;
+   // SQL-92 compliant regex pattern for param keys to be excluded
+   // _ or % wildcards are supported. '_' represent one character and '%' represents 0 or more characters
+   3: string excludeParamKeyPattern;
+}
+
+enum PartitionFilterMode {
+   BY_NAMES,                 // filter by names
+   BY_VALUES,                // filter by values
+   BY_EXPR                   // filter by expression
+}
+
+struct GetPartitionsFilterSpec {
+   7: optional PartitionFilterMode filterMode,
+   8: optional list<string> filters //used as list of partitionNames or list of values or expressions depending on mode
+}
+
+struct GetPartitionsResponse {
+  1: list<PartitionSpec> partitionSpec
+}
+
+struct GetPartitionsRequest {
+   1: optional string catName,
+   2: string dbName,
+   3: string tblName,
+   4: optional bool withAuth,
+   5: optional string user,
+   6: optional list<string> groupNames,
+   7: GetPartitionsProjectionSpec projectionSpec
+   8: GetPartitionsFilterSpec filterSpec // TODO not yet implemented. Must be present but ignored
 }
 
 // Exceptions.
@@ -2324,6 +2398,9 @@ service ThriftHiveMetastore extends fb303.FacebookService
   
   void add_runtime_stats(1: RuntimeStat stat) throws(1:MetaException o1)
   list<RuntimeStat> get_runtime_stats(1: GetRuntimeStatsRequest rqst) throws(1:MetaException o1)
+
+  // get_partitions with filter and projectspec
+  GetPartitionsResponse get_partitions_with_specs(1: GetPartitionsRequest request) throws(1:MetaException o1)
 }
 
 // * Note about the DDL_TIME: When creating or altering a table or a partition,

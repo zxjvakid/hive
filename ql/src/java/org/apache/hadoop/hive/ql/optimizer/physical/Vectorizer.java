@@ -3623,6 +3623,9 @@ public class Vectorizer implements PhysicalPlanResolver {
      *
      * Value expressions include keys? YES.
      */
+    boolean supportsValueTypes = true;  // Assume.
+    HashSet<String> notSupportedValueTypes = new HashSet<String>();
+
     int[] bigTableValueColumnMap = new int[allBigTableValueExpressions.length];
     String[] bigTableValueColumnNames = new String[allBigTableValueExpressions.length];
     TypeInfo[] bigTableValueTypeInfos = new TypeInfo[allBigTableValueExpressions.length];
@@ -3637,7 +3640,13 @@ public class Vectorizer implements PhysicalPlanResolver {
 
       ExprNodeDesc exprNode = bigTableExprs.get(i);
       bigTableValueColumnNames[i] = exprNode.toString();
-      bigTableValueTypeInfos[i] = exprNode.getTypeInfo();
+      TypeInfo typeInfo = exprNode.getTypeInfo();
+      if (!(typeInfo instanceof PrimitiveTypeInfo)) {
+        supportsValueTypes = false;
+        Category category = typeInfo.getCategory();
+        notSupportedValueTypes.add(category.toString());
+      }
+      bigTableValueTypeInfos[i] = typeInfo;
     }
     if (bigTableValueExpressionsList.size() == 0) {
       slimmedBigTableValueExpressions = null;
@@ -3880,6 +3889,10 @@ public class Vectorizer implements PhysicalPlanResolver {
     if (!supportsKeyTypes) {
       vectorDesc.setNotSupportedKeyTypes(new ArrayList(notSupportedKeyTypes));
     }
+    vectorDesc.setSupportsValueTypes(supportsValueTypes);
+    if (!supportsValueTypes) {
+      vectorDesc.setNotSupportedValueTypes(new ArrayList(notSupportedValueTypes));
+    }
 
     // Check common conditions for both Optimized and Fast Hash Tables.
     boolean result = true;    // Assume.
@@ -3889,7 +3902,8 @@ public class Vectorizer implements PhysicalPlanResolver {
         !oneMapJoinCondition ||
         hasNullSafes ||
         !smallTableExprVectorizes ||
-        outerJoinHasNoKeys) {
+        outerJoinHasNoKeys ||
+        !supportsValueTypes) {
       result = false;
     }
 
@@ -4659,6 +4673,14 @@ public class Vectorizer implements PhysicalPlanResolver {
     List<ExprNodeDesc> colList = selectDesc.getColList();
     int index = 0;
     final int size = colList.size();
+
+    // Since the call to fixDecimalDataTypePhysicalVariations will be done post-vector-expression
+    // creation, it cannot freely use deallocated scratch columns.  Scratch column reuse assumes
+    // sequential execution so it can reuse freed scratch columns from earlier
+    // evaluations.
+    //
+    vContext.clearScratchColumnWasUsedTracking();
+
     VectorExpression[] vectorSelectExprs = new VectorExpression[size];
     int[] projectedOutputColumns = new int[size];
     for (int i = 0; i < size; i++) {
@@ -4679,7 +4701,12 @@ public class Vectorizer implements PhysicalPlanResolver {
     // at least one of its children is DECIMAL_64. Some expressions like x % y for example only accepts DECIMAL
     // for x and y (at this time there is only DecimalColModuloDecimalColumn so both x and y has to be DECIMAL).
     // The following method introduces a cast if x or y is DECIMAL_64 and parent expression (x % y) is DECIMAL.
-    fixDecimalDataTypePhysicalVariations(vContext, vectorSelectExprs);
+    vContext.setDontReuseTrackedScratchColumns(true);
+    try {
+      fixDecimalDataTypePhysicalVariations(vContext, vectorSelectExprs);
+    } finally {
+      vContext.setDontReuseTrackedScratchColumns(false);
+    }
 
     vectorSelectDesc.setSelectExpressions(vectorSelectExprs);
     vectorSelectDesc.setProjectedOutputColumns(projectedOutputColumns);

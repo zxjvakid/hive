@@ -26,6 +26,7 @@ add_months
 aes_decrypt
 aes_encrypt
 and
+approx_distinct
 array
 array_contains
 ascii
@@ -254,6 +255,7 @@ substr
 substring
 substring_index
 sum
+surrogate_key
 tan
 to_date
 to_epoch_milli
@@ -262,6 +264,7 @@ to_utc_timestamp
 translate
 trim
 trunc
+tumbling_window
 ucase
 udftoboolean
 udftobyte

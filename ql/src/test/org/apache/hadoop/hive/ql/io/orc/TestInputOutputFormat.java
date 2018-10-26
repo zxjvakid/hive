@@ -794,8 +794,8 @@ public class TestInputOutputFormat {
       int readsAfter = fs.statistics.getReadOps();
       System.out.println("STATS TRACE END - " + testCaseName.getMethodName());
       int delta = readsAfter - readsBefore;
-      // 16 without HIVE-19588, 8 with HIVE-19588
-      assertEquals(8, delta);
+      //HIVE-16812 adds 1 read of the footer of each file
+      assertEquals(16, delta);
     } finally {
       MockFileSystem.clearGlobalFiles();
     }
@@ -4049,7 +4049,7 @@ public class TestInputOutputFormat {
     conf.set(ColumnProjectionUtils.READ_COLUMN_IDS_CONF_STR, "0,2");
     OrcSplit split = new OrcSplit(testFilePath, null, 0, fileLength,
         new String[0], null, false, true,
-        new ArrayList<AcidInputFormat.DeltaMetaData>(), fileLength, fileLength, workDir);
+        new ArrayList<AcidInputFormat.DeltaMetaData>(), fileLength, fileLength, workDir, null);
     OrcInputFormat inputFormat = new OrcInputFormat();
     AcidInputFormat.RowReader<OrcStruct> reader = inputFormat.getReader(split,
         new AcidInputFormat.Options(conf));
@@ -4077,7 +4077,7 @@ public class TestInputOutputFormat {
     conf.set(ColumnProjectionUtils.READ_COLUMN_IDS_CONF_STR, "0,2,3");
     split = new OrcSplit(testFilePath, null, 0, fileLength,
         new String[0], null, false, true,
-        new ArrayList<AcidInputFormat.DeltaMetaData>(), fileLength, fileLength, workDir);
+        new ArrayList<AcidInputFormat.DeltaMetaData>(), fileLength, fileLength, workDir, null);
     inputFormat = new OrcInputFormat();
     reader = inputFormat.getReader(split, new AcidInputFormat.Options(conf));
     record = 0;
@@ -4195,7 +4195,7 @@ public class TestInputOutputFormat {
     // Specify an OrcSplit that starts beyond the offset of the last stripe.
     OrcSplit split = new OrcSplit(testFilePath, null, lastStripeOffset + 1, lastStripeLength,
         new String[0], null, false, true,
-        new ArrayList<AcidInputFormat.DeltaMetaData>(), fileLength, fileLength, workDir);
+        new ArrayList<AcidInputFormat.DeltaMetaData>(), fileLength, fileLength, workDir, null);
     OrcInputFormat inputFormat = new OrcInputFormat();
     AcidInputFormat.RowReader<OrcStruct> reader = inputFormat.getReader(split,
         new AcidInputFormat.Options(conf));

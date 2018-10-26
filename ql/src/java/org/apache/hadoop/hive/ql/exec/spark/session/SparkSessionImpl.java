@@ -98,7 +98,6 @@ public class SparkSessionImpl implements SparkSession {
   private final String sessionId;
   private volatile HiveSparkClient hiveSparkClient;
   private volatile Path scratchDir;
-  private final Object dirLock = new Object();
 
   /**
    * The timestamp of the last completed Spark job.
@@ -110,11 +109,6 @@ public class SparkSessionImpl implements SparkSession {
    */
   private final Set<String> activeJobs = Sets.newConcurrentHashSet();
 
-  /**
-   * True if at least a single query has been run by this session, false otherwise.
-   */
-  private volatile boolean queryCompleted;
-
   private ReadWriteLock closeLock = new ReentrantReadWriteLock();
 
   SparkSessionImpl(String sessionId) {
@@ -124,27 +118,26 @@ public class SparkSessionImpl implements SparkSession {
 
   @Override
   public void open(HiveConf conf) throws HiveException {
-    closeLock.readLock().lock();
+    closeLock.writeLock().lock();
+
     try {
-      LOG.info("Trying to open Hive on Spark session {}", sessionId);
-      this.conf = conf;
-      isOpen = true;
-      try {
-        hiveSparkClient = HiveSparkClientFactory.createHiveSparkClient(conf, sessionId,
-              SessionState.get().getSessionId());
-      } catch (Throwable e) {
-        // It's possible that user session is closed while creating Spark client.
-        HiveException he;
-        if (isOpen) {
-          he = getHiveException(e);
-        } else {
-          he = new HiveException(e, ErrorMsg.SPARK_CREATE_CLIENT_CLOSED_SESSION, sessionId);
+      if (!isOpen) {
+        LOG.info("Trying to open Hive on Spark session {}", sessionId);
+        this.conf = conf;
+
+        try {
+          hiveSparkClient = HiveSparkClientFactory.createHiveSparkClient(conf, sessionId,
+                  SessionState.get().getSessionId());
+          isOpen = true;
+        } catch (Throwable e) {
+          throw getHiveException(e);
         }
-        throw he;
+        LOG.info("Hive on Spark session {} successfully opened", sessionId);
+      } else {
+        LOG.info("Hive on Spark session {} is already opened", sessionId);
       }
-      LOG.info("Hive on Spark session {} successfully opened", sessionId);
     } finally {
-      closeLock.readLock().unlock();
+      closeLock.writeLock().unlock();
     }
   }
 
@@ -199,12 +192,7 @@ public class SparkSessionImpl implements SparkSession {
 
   @Override
   public boolean isOpen() {
-    closeLock.readLock().lock();
-    try {
-      return isOpen;
-    } finally {
-      closeLock.readLock().unlock();
-    }
+    return isOpen;
   }
 
   @Override
@@ -221,10 +209,10 @@ public class SparkSessionImpl implements SparkSession {
   public void close() {
     if (isOpen) {
       closeLock.writeLock().lock();
+
       try {
         if (isOpen) {
           LOG.info("Trying to close Hive on Spark session {}", sessionId);
-          isOpen = false;
           if (hiveSparkClient != null) {
             try {
               hiveSparkClient.close();
@@ -235,8 +223,9 @@ public class SparkSessionImpl implements SparkSession {
             }
           }
           hiveSparkClient = null;
-          queryCompleted = false;
           lastSparkJobCompletionTime = 0;
+
+          isOpen = false;
         }
       } finally {
         closeLock.writeLock().unlock();
@@ -317,6 +306,7 @@ public class SparkSessionImpl implements SparkSession {
     return result;
   }
 
+  //This method is not thread safe
   private void cleanScratchDir() throws IOException {
     if (scratchDir != null) {
       FileSystem fs = scratchDir.getFileSystem(conf);
@@ -324,15 +314,16 @@ public class SparkSessionImpl implements SparkSession {
       scratchDir = null;
     }
   }
-
+  /**
+   * Create scratch directory for spark session if it does not exist.
+   * This method is not thread safe.
+   * @return Path to Spark session scratch directory.
+   * @throws IOException
+   */
   @Override
   public Path getHDFSSessionDir() throws IOException {
     if (scratchDir == null) {
-      synchronized (dirLock) {
-        if (scratchDir == null) {
-          scratchDir = createScratchDir();
-        }
-      }
+      scratchDir = createScratchDir();
     }
     return scratchDir;
   }
@@ -347,10 +338,11 @@ public class SparkSessionImpl implements SparkSession {
    */
   @Override
   public boolean triggerTimeout(long sessionTimeout) {
-    if (hasTimedOut(queryCompleted, activeJobs, lastSparkJobCompletionTime, sessionTimeout)) {
+    if (hasTimedOut(activeJobs, lastSparkJobCompletionTime, sessionTimeout)) {
       closeLock.writeLock().lock();
+
       try {
-        if (hasTimedOut(queryCompleted, activeJobs, lastSparkJobCompletionTime, sessionTimeout)) {
+        if (hasTimedOut(activeJobs, lastSparkJobCompletionTime, sessionTimeout)) {
           LOG.warn("Closing Spark session " + getSessionId() + " because a Spark job has not " +
                   "been run in the past " + sessionTimeout / 1000 + " seconds");
           close();
@@ -365,28 +357,24 @@ public class SparkSessionImpl implements SparkSession {
 
   /**
    * Returns true if a session has timed out, false otherwise. The following conditions must be met
-   * in order to consider a session as timed out: (1) the session must have run at least one
-   * query, (2) there can be no actively running Spark jobs, and (3) the last completed Spark job
-   * must have been more than sessionTimeout seconds ago.
+   * in order to consider a session as timed out:
+   * (1) the session must have run at least one query (i.e. lastSparkJobCompletionTime > 0),
+   * (2) there can be no actively running Spark jobs, and
+   * (3) the last completed Spark job must have been more than sessionTimeout seconds ago.
    */
-  private static boolean hasTimedOut(boolean queryCompleted, Set<String> activeJobs,
+  private static boolean hasTimedOut(Set<String> activeJobs,
                                      long lastSparkJobCompletionTime, long sessionTimeout) {
-    return queryCompleted &&
-            activeJobs.isEmpty() &&
+    return activeJobs.isEmpty() &&
             lastSparkJobCompletionTime > 0 &&
             (System.currentTimeMillis() - lastSparkJobCompletionTime) > sessionTimeout;
   }
 
   /**
-   * When this session completes the execution of a query, set the {@link #queryCompleted} flag
-   * to true if it hasn't already been set, remove the query from the list of actively running jobs,
+   * When this session completes the execution of a query, remove the query from the list of actively running jobs,
    * and set the {@link #lastSparkJobCompletionTime} to the current timestamp.
    */
   @Override
   public void onQueryCompletion(String queryId) {
-    if (!queryCompleted) {
-      queryCompleted = true;
-    }
     activeJobs.remove(queryId);
     lastSparkJobCompletionTime = System.currentTimeMillis();
   }

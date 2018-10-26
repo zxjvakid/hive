@@ -34,6 +34,8 @@ SELECT cast (`ctimestamp1` as timestamp with local time zone) as `__time`,
   cboolean2
   FROM alltypesorc where ctimestamp1 IS NOT NULL;
 
+-- ANALYZE COLUMN STATS FOR DRUID TABLE
+analyze table druid_alltypesorc compute statistics for columns;
 
 SELECT COUNT(*) FROM druid_alltypesorc;
 
@@ -138,6 +140,15 @@ EXPLAIN select * from druid_test_table_n9 where `__time` = cast('2015-03-09 23:5
 
 EXPLAIN select * from druid_test_table_n9 where `__time` = cast('2015-03-10 00:00:00' as timestamp );
 EXPLAIN select * from druid_test_table_n9 where `__time` = cast('2015-03-10 23:59:59' as timestamp );
+
+-- disable rollup and insert identical rows
+SET hive.druid.rollup=false;
+insert into druid_test_table_n9 values
+('2015-03-12 00:00:00', 'i4-1', 4),
+('2015-03-12 00:00:00', 'i4-1', 2),
+('2015-03-12 00:00:00', 'i4-1', 1);
+
+select * from druid_test_table_n9 where `__time` = cast('2015-03-12 00:00:00' as timestamp );
 
 DROP TABLE test_base_table;
 DROP TABLE druid_test_table_n9;

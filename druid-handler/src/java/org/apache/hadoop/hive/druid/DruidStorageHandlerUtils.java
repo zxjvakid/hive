@@ -672,13 +672,14 @@ public final class DruidStorageHandlerUtils {
     );
   }
 
-  public static String createScanAllQuery(String dataSourceName) throws JsonProcessingException {
+  public static String createScanAllQuery(String dataSourceName, List<String> columns) throws JsonProcessingException {
     final ScanQuery.ScanQueryBuilder scanQueryBuilder = ScanQuery.newScanQueryBuilder();
     final List<Interval> intervals = Arrays.asList(DEFAULT_INTERVAL);
     ScanQuery scanQuery = scanQueryBuilder
         .dataSource(dataSourceName)
         .resultFormat(ScanQuery.RESULT_FORMAT_COMPACTED_LIST)
         .intervals(new MultipleIntervalSegmentSpec(intervals))
+        .columns(columns)
         .build();
     return JSON_MAPPER.writeValueAsString(scanQuery);
   }
@@ -826,12 +827,16 @@ public final class DruidStorageHandlerUtils {
         tableProperties.getProperty(Constants.DRUID_SEGMENT_GRANULARITY) != null ?
             tableProperties.getProperty(Constants.DRUID_SEGMENT_GRANULARITY) :
             HiveConf.getVar(configuration, HiveConf.ConfVars.HIVE_DRUID_INDEXING_GRANULARITY);
+    final boolean rollup = tableProperties.getProperty(Constants.DRUID_ROLLUP) != null ?
+        Boolean.parseBoolean(tableProperties.getProperty(Constants.DRUID_SEGMENT_GRANULARITY)):
+        HiveConf.getBoolVar(configuration, HiveConf.ConfVars.HIVE_DRUID_ROLLUP);
     return new UniformGranularitySpec(
         Granularity.fromString(segmentGranularity),
         Granularity.fromString(
             tableProperties.getProperty(Constants.DRUID_QUERY_GRANULARITY) == null
                 ? "NONE"
                 : tableProperties.getProperty(Constants.DRUID_QUERY_GRANULARITY)),
+        rollup,
         null
     );
   }

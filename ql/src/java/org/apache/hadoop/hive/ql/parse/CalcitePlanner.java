@@ -130,6 +130,7 @@ import org.apache.hadoop.hive.ql.exec.FunctionRegistry;
 import org.apache.hadoop.hive.ql.exec.Operator;
 import org.apache.hadoop.hive.ql.exec.OperatorFactory;
 import org.apache.hadoop.hive.ql.exec.RowSchema;
+import org.apache.hadoop.hive.ql.exec.Utilities;
 import org.apache.hadoop.hive.ql.lib.Node;
 import org.apache.hadoop.hive.ql.log.PerfLogger;
 import org.apache.hadoop.hive.ql.metadata.Hive;
@@ -412,7 +413,7 @@ public class CalcitePlanner extends SemanticAnalyzer {
         CalciteConnectionProperty.MATERIALIZATIONS_ENABLED.camelName(),
         Boolean.FALSE.toString());
     CalciteConnectionConfig calciteConfig = new CalciteConnectionConfigImpl(calciteConfigProperties);
-    boolean isCorrelatedColumns = HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_STATS_CORRELATED_MULTI_KEY_JOINS);
+    boolean isCorrelatedColumns = HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_CBO_STATS_CORRELATED_MULTI_KEY_JOINS);
     boolean heuristicMaterializationStrategy = HiveConf.getVar(conf,
         HiveConf.ConfVars.HIVE_MATERIALIZED_VIEW_REWRITING_SELECTION_STRATEGY).equals("heuristic");
     HivePlannerContext confContext = new HivePlannerContext(algorithmsConf, registry, calciteConfig,
@@ -527,7 +528,15 @@ public class CalcitePlanner extends SemanticAnalyzer {
             this.ctx.setCboSucceeded(true);
             if (this.ctx.isExplainPlan()) {
               ExplainConfiguration explainConfig = this.ctx.getExplainConfig();
-              if (explainConfig.isExtended() || explainConfig.isFormatted()) {
+              if (explainConfig.isCbo()) {
+                if (explainConfig.isCboExtended()) {
+                  // Include join cost
+                  this.ctx.setCalcitePlan(RelOptUtil.toString(newPlan, SqlExplainLevel.ALL_ATTRIBUTES));
+                } else {
+                  // Do not include join cost
+                  this.ctx.setCalcitePlan(RelOptUtil.toString(newPlan));
+                }
+              } else if (explainConfig.isExtended() || explainConfig.isFormatted()) {
                 this.ctx.setOptimizedSql(getOptimizedSql(newPlan));
               }
             }
@@ -1784,16 +1793,15 @@ public class CalcitePlanner extends SemanticAnalyzer {
         calcitePreCboPlan =
             hepPlan(calcitePreCboPlan, false, mdProvider.getMetadataProvider(), null,
                     HiveRemoveSqCountCheck.INSTANCE);
-        perfLogger.PerfLogEnd(this.getClass().getName(), PerfLogger.OPTIMIZER,
-                              "Calcite: Removing sq_count_check UDF ");
+        perfLogger.PerfLogEnd(this.getClass().getName(), PerfLogger.OPTIMIZER, "Calcite: Removing sq_count_check UDF ");
       }
-      //  4.1 Remove Projects between Joins so that JoinToMultiJoinRule can merge them to MultiJoin.
-      //    Don't run this rule if hive is to remove sq_count_check since that rule expects to have project b/w join.
-      calcitePreCboPlan = hepPlan(calcitePreCboPlan, true, mdProvider.getMetadataProvider(), executorProvider,
-          HepMatchOrder.BOTTOM_UP, HiveJoinProjectTransposeRule.LEFF_PROJECT_BTW_JOIN,
-          HiveJoinProjectTransposeRule.RIGHT_PROJECT_BTW_JOIN);
 
-      // 4.2 Apply join order optimizations: reordering MST algorithm
+      //  Remove Projects between Joins so that JoinToMultiJoinRule can merge them to MultiJoin
+      calcitePreCboPlan = hepPlan(calcitePreCboPlan, true, mdProvider.getMetadataProvider(), executorProvider,
+          HepMatchOrder.BOTTOM_UP, HiveJoinProjectTransposeRule.LEFT_PROJECT_BTW_JOIN,
+          HiveJoinProjectTransposeRule.RIGHT_PROJECT_BTW_JOIN, HiveProjectMergeRule.INSTANCE);
+
+      // 4. Apply join order optimizations: reordering MST algorithm
       //    If join optimizations failed because of missing stats, we continue with
       //    the rest of optimizations
       if (profilesCBO.contains(ExtendedCBOProfile.JOIN_REORDERING)) {
@@ -2151,13 +2159,13 @@ public class CalcitePlanner extends SemanticAnalyzer {
           // We only retrieve the materialization corresponding to the rebuild. In turn,
           // we pass 'true' for the forceMVContentsUpToDate parameter, as we cannot allow the
           // materialization contents to be stale for a rebuild if we want to use it.
-          materializations = Hive.get().getValidMaterializedView(mvRebuildDbName, mvRebuildName,
-              getTablesUsed(basePlan), true);
+          materializations = db.getValidMaterializedView(mvRebuildDbName, mvRebuildName,
+              getTablesUsed(basePlan), true, getTxnMgr());
         } else {
           // This is not a rebuild, we retrieve all the materializations. In turn, we do not need
           // to force the materialization contents to be up-to-date, as this is not a rebuild, and
           // we apply the user parameters (HIVE_MATERIALIZED_VIEW_REWRITING_TIME_WINDOW) instead.
-          materializations = Hive.get().getAllValidMaterializedViews(getTablesUsed(basePlan), false);
+          materializations = db.getAllValidMaterializedViews(getTablesUsed(basePlan), false, getTxnMgr());
         }
         // We need to use the current cluster for the scan operator on views,
         // otherwise the planner will throw an Exception (different planners)
@@ -2821,7 +2829,7 @@ public class CalcitePlanner extends SemanticAnalyzer {
         // 4. Build operator
         RelOptHiveTable optTable;
         if (tableType == TableType.DRUID ||
-                (tableType == TableType.JDBC && tabMetaData.getProperty("hive.sql.table") != null)) {
+                (tableType == TableType.JDBC && tabMetaData.getProperty(Constants.JDBC_TABLE) != null)) {
           // Create case sensitive columns list
           List<String> originalColumnNames =
                   ((StandardStructObjectInspector)rowObjectInspector).getOriginalColumnNames();
@@ -2895,16 +2903,21 @@ public class CalcitePlanner extends SemanticAnalyzer {
                   getAliasId(tableAlias, qb),
                   HiveConf.getBoolVar(conf, HiveConf.ConfVars.HIVE_CBO_RETPATH_HIVEOP),
                   qb.isInsideView() || qb.getAliasInsideView().contains(tableAlias.toLowerCase()));
-            LOG.debug("JDBC is running");
-            final String dataBaseType = tabMetaData.getProperty("hive.sql.database.type");
-            final String url = tabMetaData.getProperty("hive.sql.jdbc.url");
-            final String driver = tabMetaData.getProperty("hive.sql.jdbc.driver");
-            final String user = tabMetaData.getProperty("hive.sql.dbcp.username");
-            final String pswd = tabMetaData.getProperty("hive.sql.dbcp.password");
-            //final String query = tabMetaData.getProperty("hive.sql.query");
-            final String tableName = tabMetaData.getProperty("hive.sql.table");
 
-            final DataSource ds = JdbcSchema.dataSource(url, driver, user, pswd);
+            final String dataBaseType = tabMetaData.getProperty(Constants.JDBC_DATABASE_TYPE);
+            final String url = tabMetaData.getProperty(Constants.JDBC_URL);
+            final String driver = tabMetaData.getProperty(Constants.JDBC_DRIVER);
+            final String user = tabMetaData.getProperty(Constants.JDBC_USERNAME);
+            //final String query = tabMetaData.getProperty("hive.sql.query");
+            String pswd = tabMetaData.getProperty(Constants.JDBC_PASSWORD);
+            if (pswd == null) {
+              String keystore = tabMetaData.getProperty(Constants.JDBC_KEYSTORE);
+              String key = tabMetaData.getProperty(Constants.JDBC_KEY);
+              pswd = Utilities.getPasswdFromKeystore(keystore, key);
+            }
+            final String tableName = tabMetaData.getProperty(Constants.JDBC_TABLE);
+
+            DataSource ds = JdbcSchema.dataSource(url, driver, user, pswd);
             SqlDialect jdbcDialect = JdbcSchema.createDialect(SqlDialectFactoryImpl.INSTANCE, ds);
             JdbcConvention jc = JdbcConvention.of(jdbcDialect, null, dataBaseType);
             JdbcSchema schema = new JdbcSchema(ds, jc.dialect, jc, null/*catalog */, null/*schema */);
@@ -2915,7 +2928,7 @@ public class CalcitePlanner extends SemanticAnalyzer {
 
             JdbcHiveTableScan jdbcTableRel = new JdbcHiveTableScan(cluster, optTable, jt, jc, hts);
             tableRel = new HiveJdbcConverter(cluster, jdbcTableRel.getTraitSet().replace(HiveRelNode.CONVENTION),
-                    jdbcTableRel, jc);
+                    jdbcTableRel, jc, url, user);
           }
         } else {
           // Build row type from field <type, name>

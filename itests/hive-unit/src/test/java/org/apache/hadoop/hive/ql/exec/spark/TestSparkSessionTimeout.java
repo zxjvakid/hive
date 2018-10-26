@@ -52,7 +52,7 @@ public class TestSparkSessionTimeout {
 
     SessionState.start(conf);
 
-    runTestSparkSessionTimeout(conf);
+    runTestSparkSessionTimeout(conf, 1);
   }
 
   @Test
@@ -68,11 +68,11 @@ public class TestSparkSessionTimeout {
         HiveConf conf = new HiveConf();
         conf.setBoolVar(HiveConf.ConfVars.SPARK_OPTIMIZE_SHUFFLE_SERDE, false);
         conf.set("spark.local.dir", Paths.get(System.getProperty("test.tmp.dir"),
-                "TestSparkSessionTimeout-testMultiSparkSessionTimeout-local-dir").toString());
+                "TestSparkSessionTimeout-testMultiSessionSparkSessionTimeout-local-dir").toString());
 
         SessionState.start(conf);
 
-        runTestSparkSessionTimeout(conf);
+        runTestSparkSessionTimeout(conf, 1);
         return null;
       }));
     }
@@ -82,31 +82,20 @@ public class TestSparkSessionTimeout {
   }
 
   @Test
-  public void testMultiSparkSessionTimeout() throws ExecutionException, InterruptedException {
-    List<Future<Void>> futures = new ArrayList<>();
-    ExecutorService es = Executors.newFixedThreadPool(10);
-    for (int i = 0; i < 10; i++) {
-      futures.add(es.submit(() -> {
-        String confDir = "../../data/conf/spark/local/hive-site.xml";
-        HiveConf.setHiveSiteLocation(new File(confDir).toURI().toURL());
+  public void testSparkSessionMultipleTimeout() throws HiveException, InterruptedException, MalformedURLException {
+    String confDir = "../../data/conf/spark/standalone/hive-site.xml";
+    HiveConf.setHiveSiteLocation(new File(confDir).toURI().toURL());
 
-        HiveConf conf = new HiveConf();
-        conf.setBoolVar(HiveConf.ConfVars.SPARK_OPTIMIZE_SHUFFLE_SERDE, false);
-        conf.set("spark.local.dir", Paths.get(System.getProperty("test.tmp.dir"),
-                "TestSparkSessionTimeout-testMultiSparkSessionTimeout-local-dir").toString());
+    HiveConf conf = new HiveConf();
+    conf.set("spark.local.dir", Paths.get(System.getProperty("test.tmp.dir"),
+            "TestSparkSessionTimeout-testSparkSessionMultipleTimeout-local-dir").toString());
 
-        SessionState.start(conf);
+    SessionState.start(conf);
 
-        runTestSparkSessionTimeout(conf);
-        return null;
-      }));
-    }
-    for (Future<Void> future : futures) {
-      future.get();
-    }
+    runTestSparkSessionTimeout(conf, 2);
   }
 
-  private void runTestSparkSessionTimeout(HiveConf conf) throws HiveException,
+  private void runTestSparkSessionTimeout(HiveConf conf, int sleepRunIteration) throws HiveException,
           InterruptedException {
     conf.setVar(HiveConf.ConfVars.SPARK_SESSION_TIMEOUT, "5s");
     conf.setVar(HiveConf.ConfVars.SPARK_SESSION_TIMEOUT_PERIOD, "1s");
@@ -129,12 +118,14 @@ public class TestSparkSessionTimeout {
       Assert.assertEquals(0,
               driver.run("select * from " + tableName + " order by col").getResponseCode());
 
-      Thread.sleep(10000);
+      for (int i = 0; i < sleepRunIteration; i++) {
+        Thread.sleep(10000);
 
-      Assert.assertFalse(sparkSession.isOpen());
+        Assert.assertFalse(sparkSession.isOpen());
 
-      Assert.assertEquals(0,
-              driver.run("select * from " + tableName + " order by col").getResponseCode());
+        Assert.assertEquals(0,
+                driver.run("select * from " + tableName + " order by col").getResponseCode());
+      }
     } finally {
       if (driver != null) {
         Assert.assertEquals(0, driver.run("drop table if exists " + tableName).getResponseCode());

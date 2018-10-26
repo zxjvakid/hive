@@ -97,7 +97,7 @@ Partition Parameters:
 	numFiles            	2                   
 	numRows             	1000                
 	rawDataSize         	0                   
-	totalSize           	4063                
+	totalSize           	4542                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -123,8 +123,12 @@ POSTHOOK: Input: default@acid@ds=2008-04-08
 1000
 PREHOOK: query: explain select count(*) from acid where ds='2008-04-08'
 PREHOOK: type: QUERY
+PREHOOK: Input: default@acid
+#### A masked pattern was here ####
 POSTHOOK: query: explain select count(*) from acid where ds='2008-04-08'
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@acid
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -180,7 +184,7 @@ Partition Parameters:
 	numFiles            	2                   
 	numRows             	1000                
 	rawDataSize         	0                   
-	totalSize           	4063                
+	totalSize           	4542                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -231,7 +235,7 @@ Partition Parameters:
 	numFiles            	2                   
 	numRows             	1000                
 	rawDataSize         	0                   
-	totalSize           	4063                
+	totalSize           	4542                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -257,8 +261,12 @@ POSTHOOK: Input: default@acid@ds=2008-04-08
 1000
 PREHOOK: query: explain select count(*) from acid where ds='2008-04-08'
 PREHOOK: type: QUERY
+PREHOOK: Input: default@acid
+#### A masked pattern was here ####
 POSTHOOK: query: explain select count(*) from acid where ds='2008-04-08'
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@acid
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -323,7 +331,7 @@ Partition Parameters:
 	numFiles            	4                   
 	numRows             	2000                
 	rawDataSize         	0                   
-	totalSize           	8126                
+	totalSize           	9085                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -372,7 +380,7 @@ Partition Parameters:
 	numFiles            	4                   
 	numRows             	2000                
 	rawDataSize         	0                   
-	totalSize           	8126                
+	totalSize           	9085                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -387,8 +395,12 @@ Storage Desc Params:
 	serialization.format	1                   
 PREHOOK: query: explain select count(*) from acid where ds='2008-04-08'
 PREHOOK: type: QUERY
+PREHOOK: Input: default@acid
+#### A masked pattern was here ####
 POSTHOOK: query: explain select count(*) from acid where ds='2008-04-08'
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@acid
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 
@@ -424,8 +436,14 @@ POSTHOOK: Output: default@acid@ds=2008-04-08
 #### A masked pattern was here ####
 PREHOOK: query: explain select max(key) from acid where ds='2008-04-08'
 PREHOOK: type: QUERY
+PREHOOK: Input: default@acid
+PREHOOK: Input: default@acid@ds=2008-04-08
+#### A masked pattern was here ####
 POSTHOOK: query: explain select max(key) from acid where ds='2008-04-08'
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@acid
+POSTHOOK: Input: default@acid@ds=2008-04-08
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-1 is a root stage
   Stage-0 depends on stages: Stage-1
@@ -437,11 +455,11 @@ STAGE PLANS:
           TableScan
             alias: acid
             filterExpr: (ds = '2008-04-08') (type: boolean)
-            Statistics: Num rows: 2000 Data size: 81260 Basic stats: COMPLETE Column stats: NONE
+            Statistics: Num rows: 2000 Data size: 90850 Basic stats: COMPLETE Column stats: NONE
             Select Operator
               expressions: key (type: string)
               outputColumnNames: key
-              Statistics: Num rows: 2000 Data size: 81260 Basic stats: COMPLETE Column stats: NONE
+              Statistics: Num rows: 2000 Data size: 90850 Basic stats: COMPLETE Column stats: NONE
               Group By Operator
                 aggregations: max(key)
                 mode: hash
@@ -573,7 +591,7 @@ Partition Parameters:
 	numFiles            	2                   
 	numRows             	1000                
 	rawDataSize         	176000              
-	totalSize           	3008                
+	totalSize           	3485                
 #### A masked pattern was here ####
 	 	 
 # Storage Information	 	 
@@ -612,8 +630,12 @@ POSTHOOK: Input: default@acid@ds=2008-04-09
 2000
 PREHOOK: query: explain select count(*) from acid where ds='2008-04-08'
 PREHOOK: type: QUERY
+PREHOOK: Input: default@acid
+#### A masked pattern was here ####
 POSTHOOK: query: explain select count(*) from acid where ds='2008-04-08'
 POSTHOOK: type: QUERY
+POSTHOOK: Input: default@acid
+#### A masked pattern was here ####
 STAGE DEPENDENCIES:
   Stage-0 is a root stage
 

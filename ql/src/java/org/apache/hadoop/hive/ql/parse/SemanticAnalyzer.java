@@ -238,11 +238,13 @@ import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.ql.session.SessionState.ResourceType;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFEvaluator;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFEvaluator.Mode;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDF;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFArray;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFCardinalityViolation;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFHash;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFMurmurHash;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFOPOr;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDFSurrogateKey;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDTF;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDTFInline;
 import org.apache.hadoop.hive.ql.util.ResourceDownloader;
@@ -724,17 +726,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
    * @throws SemanticException
    */
   private static List<String> getDefaultConstraints(Table tbl, List<String> targetSchema) throws SemanticException{
-    Map<String, String> colNameToDefaultVal =  null;
-    try {
-      DefaultConstraint dc = Hive.get().getEnabledDefaultConstraints(tbl.getDbName(), tbl.getTableName());
-      colNameToDefaultVal = dc.getColNameToDefaultValueMap();
-    } catch (Exception e) {
-      if (e instanceof SemanticException) {
-        throw (SemanticException) e;
-      } else {
-        throw (new RuntimeException(e));
-      }
-    }
+    Map<String, String> colNameToDefaultVal = getColNameToDefaultValueMap(tbl);
     List<String> defaultConstraints = new ArrayList<>();
     if(targetSchema != null) {
       for (String colName : targetSchema) {
@@ -747,6 +739,21 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
       }
     }
     return defaultConstraints;
+  }
+
+  protected static Map<String, String> getColNameToDefaultValueMap(Table tbl) throws SemanticException {
+    Map<String, String> colNameToDefaultVal = null;
+    try {
+      DefaultConstraint dc = Hive.get().getEnabledDefaultConstraints(tbl.getDbName(), tbl.getTableName());
+      colNameToDefaultVal = dc.getColNameToDefaultValueMap();
+    } catch (Exception e) {
+      if (e instanceof SemanticException) {
+        throw (SemanticException) e;
+      } else {
+        throw (new RuntimeException(e));
+      }
+    }
+    return colNameToDefaultVal;
   }
 
   /**
@@ -768,28 +775,6 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
       }
     }
     return newNode;
-  }
-
-  public static String replaceDefaultKeywordForMerge(String valueClause,Table targetTable)
-      throws SemanticException {
-    List<String> defaultConstraints = null;
-    String[] values = valueClause.trim().split(",");
-    StringBuilder newValueClause = new StringBuilder();
-    for (int i = 0; i < values.length; i++) {
-      if (values[i].trim().toLowerCase().equals("`default`")) {
-        if (defaultConstraints == null) {
-          defaultConstraints = getDefaultConstraints(targetTable, null);
-        }
-        newValueClause.append(defaultConstraints.get(i));
-      }
-      else {
-        newValueClause.append(values[i]);
-      }
-      if(i != values.length-1) {
-        newValueClause.append(",");
-      }
-    }
-    return newValueClause.toString();
   }
 
   /**
@@ -2073,9 +2058,6 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
       }
       getMetaData(qb, null);
     } catch (HiveException e) {
-      // Has to use full name to make sure it does not conflict with
-      // org.apache.commons.lang.StringUtils
-      LOG.error(org.apache.hadoop.util.StringUtils.stringifyException(e));
       if (e instanceof SemanticException) {
         throw (SemanticException)e;
       }
@@ -4635,17 +4617,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
     // see if we need to fetch default constraints from metastore
     if(targetCol2Projection.size() < targetTableColNames.size()) {
-      try {
-          DefaultConstraint dc = Hive.get().getEnabledDefaultConstraints(target.getDbName(), target.getTableName());
-          colNameToDefaultVal = dc.getColNameToDefaultValueMap();
-      } catch (Exception e) {
-        if (e instanceof SemanticException) {
-          throw (SemanticException) e;
-        } else {
-          throw (new RuntimeException(e));
-        }
-      }
-
+      colNameToDefaultVal = getColNameToDefaultValueMap(target);
     }
     for (int i = 0; i < targetTableColNames.size(); i++) {
       String f = targetTableColNames.get(i);
@@ -6397,7 +6369,6 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
     for (Map.Entry<String, ASTNode> entry : aggregationTrees.entrySet()) {
       ASTNode value = entry.getValue();
-      ArrayList<ExprNodeDesc> aggParameters = new ArrayList<ExprNodeDesc>();
       // 0 is the function name
       for (int i = 1; i < value.getChildCount(); i++) {
         ASTNode paraExpr = (ASTNode) value.getChild(i);
@@ -7263,7 +7234,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
       lbCtx = constructListBucketingCtx(destinationTable.getSkewedColNames(),
           destinationTable.getSkewedColValues(), destinationTable.getSkewedColValueLocationMaps(),
-          destinationTable.isStoredAsSubDirectories(), conf);
+          destinationTable.isStoredAsSubDirectories());
 
       // Create the work for moving the table
       // NOTE: specify Dynamic partitions in dest_tab for WriteEntity
@@ -7342,10 +7313,23 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
       checkImmutableTable(qb, destinationTable, partPath, true);
 
-      // if the table is in a different dfs than the partition,
-      // replace the partition's dfs with the table's dfs.
-      destinationPath = new Path(tabPath.toUri().getScheme(), tabPath.toUri()
-          .getAuthority(), partPath.toUri().getPath());
+      // Previous behavior (HIVE-1707) used to replace the partition's dfs with the table's dfs.
+      // The changes in HIVE-19891 appears to no longer support that behavior.
+      destinationPath = partPath;
+
+      if (MetaStoreUtils.isArchived(destinationPartition.getTPartition())) {
+        try {
+          String conflictingArchive = ArchiveUtils.conflictingArchiveNameOrNull(
+                  db, destinationTable, destinationPartition.getSpec());
+          String message = String.format("Insert conflict with existing archive: %s",
+                  conflictingArchive);
+          throw new SemanticException(message);
+        } catch (SemanticException err) {
+          throw err;
+        } catch (HiveException err) {
+          throw new SemanticException(err);
+        }
+      }
 
       isMmTable = AcidUtils.isInsertOnlyTable(destinationTable.getParameters());
       queryTmpdir = isMmTable ? destinationPath : ctx.getTempDirForFinalJobPath(destinationPath);
@@ -7367,7 +7351,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
       lbCtx = constructListBucketingCtx(destinationPartition.getSkewedColNames(),
           destinationPartition.getSkewedColValues(), destinationPartition.getSkewedColValueLocationMaps(),
-          destinationPartition.isStoredAsSubDirectories(), conf);
+          destinationPartition.isStoredAsSubDirectories());
       AcidUtils.Operation acidOp = AcidUtils.Operation.NOT_ACID;
       if (destTableIsFullAcid) {
         acidOp = getAcidType(tableDescriptor.getOutputFileFormatClass(), dest);
@@ -7705,6 +7689,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
         fileSinkDesc, fsRS, input), inputRR);
 
     handleLineage(ltd, output);
+    setWriteIdForSurrogateKeys(ltd, input);
 
     if (LOG.isDebugEnabled()) {
       LOG.debug("Created FileSink Plan for clause: " + dest + "dest_path: "
@@ -7946,6 +7931,22 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
 
       queryState.getLineageState()
           .mapDirToOp(tlocation, output);
+    }
+  }
+
+  private void setWriteIdForSurrogateKeys(LoadTableDesc ltd, Operator input) throws SemanticException {
+    Map<String, ExprNodeDesc> columnExprMap = input.getConf().getColumnExprMap();
+    if (ltd == null || columnExprMap == null) {
+      return;
+    }
+
+    for (ExprNodeDesc desc : columnExprMap.values()) {
+      if (desc instanceof ExprNodeGenericFuncDesc) {
+        GenericUDF genericUDF = ((ExprNodeGenericFuncDesc)desc).getGenericUDF();
+        if (genericUDF instanceof GenericUDFSurrogateKey) {
+          ((GenericUDFSurrogateKey)genericUDF).setWriteId(ltd.getWriteId());
+        }
+      }
     }
   }
 
@@ -11097,11 +11098,15 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
       Iterator<VirtualColumn> vcs = VirtualColumn.getRegistry(conf).iterator();
       // use a list for easy cumtomize
       List<VirtualColumn> vcList = new ArrayList<VirtualColumn>();
-      while (vcs.hasNext()) {
-        VirtualColumn vc = vcs.next();
-        rwsch.put(alias, vc.getName().toLowerCase(), new ColumnInfo(vc.getName(),
-            vc.getTypeInfo(), alias, true, vc.getIsHidden()));
-        vcList.add(vc);
+      if(!tab.isNonNative()) {
+        // Virtual columns are only for native tables
+        while (vcs.hasNext()) {
+          VirtualColumn vc = vcs.next();
+          rwsch.put(alias, vc.getName().toLowerCase(), new ColumnInfo(vc.getName(),
+                  vc.getTypeInfo(), alias, true, vc.getIsHidden()
+          ));
+          vcList.add(vc);
+        }
       }
 
       // Create the root of the operator tree
@@ -13292,6 +13297,7 @@ public class SemanticAnalyzer extends BaseSemanticAnalyzer {
         break;
       case HiveParser.TOK_TABLEPROPERTIES:
         tblProps = DDLSemanticAnalyzer.getProps((ASTNode) child.getChild(0));
+        addPropertyReadEntry(tblProps, inputs);
         break;
       case HiveParser.TOK_TABLESERIALIZER:
         child = (ASTNode) child.getChild(0);

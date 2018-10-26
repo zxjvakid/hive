@@ -88,6 +88,8 @@ public class MapJoinDesc extends JoinDesc implements Serializable {
   private boolean isHybridHashJoin;
   private boolean isDynamicPartitionHashJoin = false;
 
+  private String cacheKey;
+
   public MapJoinDesc() {
     bigTableBucketNumMapping = new LinkedHashMap<String, Integer>();
   }
@@ -111,6 +113,7 @@ public class MapJoinDesc extends JoinDesc implements Serializable {
     this.parentDataSizes = clone.parentDataSizes;
     this.isBucketMapJoin = clone.isBucketMapJoin;
     this.isHybridHashJoin = clone.isHybridHashJoin;
+    this.cacheKey = clone.cacheKey;
   }
 
   public MapJoinDesc(final Map<Byte, List<ExprNodeDesc>> keys,
@@ -128,6 +131,7 @@ public class MapJoinDesc extends JoinDesc implements Serializable {
     this.bigTableBucketNumMapping = new LinkedHashMap<String, Integer>();
     this.dumpFilePrefix = dumpFilePrefix;
     this.inMemoryDataSize = inMemoryDataSize;
+    this.cacheKey = null;
     initRetainExprList();
   }
 
@@ -478,6 +482,18 @@ public class MapJoinDesc extends JoinDesc implements Serializable {
     return Arrays.deepToString(fm);
   }
 
+  public String getCacheKey() {
+    return cacheKey;
+  }
+
+  public void setCacheKey(String cacheKey) {
+    this.cacheKey = cacheKey;
+  }
+
+  public static String generateCacheKey(String operatorId) {
+    return "HASH_MAP_" + operatorId + "_container";
+  }
+
   // Use LinkedHashSet to give predictable display order.
   private static final Set<String> vectorizableMapJoinNativeEngines =
       new LinkedHashSet<String>(Arrays.asList("tez", "spark"));
@@ -556,6 +572,16 @@ public class MapJoinDesc extends JoinDesc implements Serializable {
             new VectorizationCondition(
                 vectorMapJoinDesc.getSupportsKeyTypes(),
                 "Optimized Table and Supports Key Types"));
+      }
+      final boolean supportsValueTypes = vectorMapJoinDesc.getSupportsValueTypes();
+      if (!supportsValueTypes) {
+
+        // Only add this condition when false to avoid mega-Q file update.
+        conditionList.add(
+            new VectorizationCondition(
+                false,
+                "Supports Value Types " +
+                vectorMapJoinDesc.getNotSupportedValueTypes().toString()));
       }
 
       VectorizationCondition[] conditions =

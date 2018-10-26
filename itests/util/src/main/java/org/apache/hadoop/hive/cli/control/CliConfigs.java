@@ -59,6 +59,10 @@ public class CliConfigs {
         excludesFrom(testConfigProps, "erasurecoding.only.query.files");
 
         excludeQuery("fouter_join_ppr.q"); // Disabled in HIVE-19509
+        excludeQuery("udaf_context_ngrams.q"); // disabled in HIVE-20741
+        excludeQuery("udaf_corr.q"); // disabled in HIVE-20741
+        excludeQuery("udaf_histogram_numeric.q"); // disabled in HIVE-20715
+        excludeQuery("stat_estimate_related_col.q"); // disabled in HIVE-20727
 
         setResultsDir("ql/src/test/results/clientpositive");
         setLogDir("itests/qtest/target/qfile-results/clientpositive");
@@ -209,6 +213,7 @@ public class CliConfigs {
         excludeQuery("union_fast_stats.q"); // Disabled in HIVE-19509
         excludeQuery("schema_evol_orc_acidvec_part.q"); // Disabled in HIVE-19509
         excludeQuery("schema_evol_orc_vec_part_llap_io.q"); // Disabled in HIVE-19509
+        excludeQuery("load_dyn_part3.q"); // Disabled in HIVE-20662. Enable in HIVE-20663.
 
         setResultsDir("ql/src/test/results/clientpositive/llap");
         setLogDir("itests/qtest/target/qfile-results/clientpositive");
@@ -275,7 +280,7 @@ public class CliConfigs {
   }
 
   public static class TezPerfCliConfig extends AbstractCliConfig {
-    public TezPerfCliConfig() {
+    public TezPerfCliConfig(boolean useConstraints) {
       super(CorePerfCliDriver.class);
       try {
         setQueryDir("ql/src/test/queries/clientpositive/perf");
@@ -285,10 +290,21 @@ public class CliConfigs {
         excludesFrom(testConfigProps, "encrypted.query.files");
         excludesFrom(testConfigProps, "erasurecoding.only.query.files");
 
-        setResultsDir("ql/src/test/results/clientpositive/perf/tez");
+        excludeQuery("cbo_query44.q"); // TODO: Enable when we move to Calcite 1.18
+        excludeQuery("cbo_query45.q"); // TODO: Enable when we move to Calcite 1.18
+        excludeQuery("cbo_query67.q"); // TODO: Enable when we move to Calcite 1.18
+        excludeQuery("cbo_query70.q"); // TODO: Enable when we move to Calcite 1.18
+        excludeQuery("cbo_query86.q"); // TODO: Enable when we move to Calcite 1.18
+
         setLogDir("itests/qtest/target/qfile-results/clientpositive/tez");
 
-        setInitScript("q_perf_test_init.sql");
+        if (useConstraints) {
+          setInitScript("q_perf_test_init_constraints.sql");
+          setResultsDir("ql/src/test/results/clientpositive/perf/tez/constraints");
+        } else {
+          setInitScript("q_perf_test_init.sql");
+          setResultsDir("ql/src/test/results/clientpositive/perf/tez");
+        }
         setCleanupScript("q_perf_test_cleanup.sql");
 
         setHiveConfDir("data/conf/perf-reg/tez");

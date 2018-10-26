@@ -52,8 +52,6 @@ import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.DefaultMetaStoreFilterHookImpl;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
 import org.apache.hadoop.hive.metastore.conf.MetastoreConf;
-import org.apache.hadoop.hive.ql.Context;
-import org.apache.hadoop.hive.ql.QueryState;
 import org.apache.hadoop.hive.ql.exec.ColumnInfo;
 import org.apache.hadoop.hive.ql.optimizer.calcite.CalciteSemanticException;
 import org.apache.hadoop.hive.ql.optimizer.calcite.HiveTypeSystemImpl;
@@ -61,11 +59,8 @@ import org.apache.hadoop.hive.ql.optimizer.calcite.RelOptHiveTable;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveRelNode;
 import org.apache.hadoop.hive.ql.optimizer.calcite.reloperators.HiveTableScan;
 import org.apache.hadoop.hive.ql.optimizer.calcite.translator.TypeConverter;
-import org.apache.hadoop.hive.ql.parse.ASTNode;
 import org.apache.hadoop.hive.ql.parse.CalcitePlanner;
-import org.apache.hadoop.hive.ql.parse.ColumnStatsList;
 import org.apache.hadoop.hive.ql.parse.ParseUtils;
-import org.apache.hadoop.hive.ql.parse.PrunedPartitionList;
 import org.apache.hadoop.hive.ql.parse.RowResolver;
 import org.apache.hadoop.hive.ql.session.SessionState;
 import org.apache.hadoop.hive.serde2.SerDeException;
@@ -76,6 +71,7 @@ import org.apache.hadoop.hive.serde2.typeinfo.TypeInfoUtils;
 import org.joda.time.Interval;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 
 import com.google.common.collect.ImmutableList;
 
@@ -142,7 +138,9 @@ public final class HiveMaterializedViewsRegistry {
       LOG.info("Using dummy materialized views registry");
     } else {
       // We initialize the cache
-      ExecutorService pool = Executors.newCachedThreadPool();
+      ExecutorService pool = Executors.newCachedThreadPool(new ThreadFactoryBuilder().setDaemon(true)
+        .setNameFormat("HiveMaterializedViewsRegistry-%d")
+         .build());
       pool.submit(new Loader(db));
       pool.shutdown();
     }
@@ -224,10 +222,12 @@ public final class HiveMaterializedViewsRegistry {
           " ignored; error creating view replacement");
       return null;
     }
-    final RelNode queryRel = parseQuery(conf, viewQuery);
-    if (queryRel == null) {
+    final RelNode queryRel;
+    try {
+      queryRel = ParseUtils.parseQuery(conf, viewQuery);
+    } catch (Exception e) {
       LOG.warn("Materialized view " + materializedViewTable.getCompleteName() +
-          " ignored; error parsing original query");
+          " ignored; error parsing original query; " + e);
       return null;
     }
 
@@ -398,24 +398,6 @@ public final class HiveMaterializedViewsRegistry {
     }
 
     return tableRel;
-  }
-
-  private static RelNode parseQuery(HiveConf conf, String viewQuery) {
-    try {
-      final ASTNode node = ParseUtils.parse(viewQuery);
-      final QueryState qs =
-          new QueryState.Builder().withHiveConf(conf).build();
-      CalcitePlanner analyzer = new CalcitePlanner(qs);
-      Context ctx = new Context(conf);
-      ctx.setIsLoadingMaterializedView(true);
-      analyzer.initCtx(ctx);
-      analyzer.init(false);
-      return analyzer.genLogicalPlan(node);
-    } catch (Exception e) {
-      // We could not parse the view
-      LOG.error("Error parsing original query for materialized view", e);
-      return null;
-    }
   }
 
   private static TableType obtainTableType(Table tabMetaData) {

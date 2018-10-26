@@ -214,7 +214,9 @@ public class OrcEncodedDataReader extends CallableWithNdc<Void>
     fs = split.getPath().getFileSystem(jobConf);
     fileKey = determineFileId(fs, split,
         HiveConf.getBoolVar(daemonConf, ConfVars.LLAP_CACHE_ALLOW_SYNTHETIC_FILEID),
-        HiveConf.getBoolVar(daemonConf, ConfVars.LLAP_CACHE_DEFAULT_FS_FILE_ID));
+        HiveConf.getBoolVar(daemonConf, ConfVars.LLAP_CACHE_DEFAULT_FS_FILE_ID),
+        !HiveConf.getBoolVar(daemonConf, ConfVars.LLAP_IO_USE_FILEID_PATH)
+        );
     fileMetadata = getFileFooterFromCacheOrDisk();
     final TypeDescription fileSchema = fileMetadata.getSchema();
 
@@ -441,7 +443,7 @@ public class OrcEncodedDataReader extends CallableWithNdc<Void>
   }
 
   private void recordReaderTime(long startTime) {
-    counters.incrTimeCounter(LlapIOCounters.TOTAL_IO_TIME_NS, startTime);
+    counters.incrWallClockCounter(LlapIOCounters.TOTAL_IO_TIME_NS, startTime);
   }
 
   private void validateFileMetadata() throws IOException {
@@ -464,7 +466,7 @@ public class OrcEncodedDataReader extends CallableWithNdc<Void>
   }
 
   private static Object determineFileId(FileSystem fs, FileSplit split,
-      boolean allowSynthetic, boolean checkDefaultFs) throws IOException {
+      boolean allowSynthetic, boolean checkDefaultFs, boolean forceSynthetic) throws IOException {
     if (split instanceof OrcSplit) {
       Object fileKey = ((OrcSplit)split).getFileKey();
       if (fileKey != null) {
@@ -472,7 +474,7 @@ public class OrcEncodedDataReader extends CallableWithNdc<Void>
       }
     }
     LOG.warn("Split for " + split.getPath() + " (" + split.getClass() + ") does not have file ID");
-    return HdfsUtils.getFileId(fs, split.getPath(), allowSynthetic, checkDefaultFs);
+    return HdfsUtils.getFileId(fs, split.getPath(), allowSynthetic, checkDefaultFs, forceSynthetic);
   }
 
   /**
@@ -517,7 +519,7 @@ public class OrcEncodedDataReader extends CallableWithNdc<Void>
       }
     }
     orcReader = EncodedOrcFile.createReader(path, opts);
-    counters.incrTimeCounter(LlapIOCounters.HDFS_TIME_NS, startTime);
+    counters.incrWallClockCounter(LlapIOCounters.HDFS_TIME_NS, startTime);
   }
 
   /**
@@ -675,7 +677,7 @@ public class OrcEncodedDataReader extends CallableWithNdc<Void>
     DiskRangeList footerRange = rawDataReader.readFileData(
         new DiskRangeList(offset, offset + si.getFooterLength()), 0, false);
     // LOG.error("Got " + RecordReaderUtils.stringifyDiskRanges(footerRange));
-    counters.incrTimeCounter(LlapIOCounters.HDFS_TIME_NS, startTime);
+    counters.incrWallClockCounter(LlapIOCounters.HDFS_TIME_NS, startTime);
     assert footerRange.next == null; // Can only happens w/zcr for a single input buffer.
     if (hasCache) {
       LlapBufferOrBuffers cacheBuf = metadataCache.putStripeTail(
@@ -714,7 +716,7 @@ public class OrcEncodedDataReader extends CallableWithNdc<Void>
       if (!isRawDataReaderOpen && isOpen) {
         long startTime = counters.startTimeCounter();
         rawDataReader.open();
-        counters.incrTimeCounter(LlapIOCounters.HDFS_TIME_NS, startTime);
+        counters.incrWallClockCounter(LlapIOCounters.HDFS_TIME_NS, startTime);
       }
       return;
     }
@@ -732,7 +734,7 @@ public class OrcEncodedDataReader extends CallableWithNdc<Void>
       rawDataReader.open();
       isRawDataReaderOpen = true;
     }
-    counters.incrTimeCounter(LlapIOCounters.HDFS_TIME_NS, startTime);
+    counters.incrWallClockCounter(LlapIOCounters.HDFS_TIME_NS, startTime);
   }
 
   @Override

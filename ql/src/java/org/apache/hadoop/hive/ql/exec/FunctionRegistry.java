@@ -68,6 +68,7 @@ import org.apache.hadoop.hive.ql.udf.UDFFromUnixTime;
 import org.apache.hadoop.hive.ql.udf.UDFHex;
 import org.apache.hadoop.hive.ql.udf.UDFHour;
 import org.apache.hadoop.hive.ql.udf.UDFJson;
+import org.apache.hadoop.hive.ql.udf.generic.GenericUDAFApproximateDistinct;
 import org.apache.hadoop.hive.ql.udf.generic.GenericUDFLength;
 import org.apache.hadoop.hive.ql.udf.UDFLike;
 import org.apache.hadoop.hive.ql.udf.UDFLn;
@@ -364,6 +365,8 @@ public final class FunctionRegistry {
     system.registerGenericUDF("restrict_information_schema", GenericUDFRestrictInformationSchema.class);
     system.registerGenericUDF("current_authorizer", GenericUDFCurrentAuthorizer.class);
 
+    system.registerGenericUDF("surrogate_key", GenericUDFSurrogateKey.class);
+
     system.registerGenericUDF("isnull", GenericUDFOPNull.class);
     system.registerGenericUDF("isnotnull", GenericUDFOPNotNull.class);
     system.registerGenericUDF("istrue", GenericUDFOPTrue.class);
@@ -463,6 +466,7 @@ public final class FunctionRegistry {
 
     system.registerGenericUDAF("compute_stats", new GenericUDAFComputeStats());
     system.registerGenericUDAF("bloom_filter", new GenericUDAFBloomFilter());
+    system.registerGenericUDAF("approx_distinct", new GenericUDAFApproximateDistinct());
     system.registerUDAF("percentile", UDAFPercentile.class);
 
 
@@ -515,6 +519,7 @@ public final class FunctionRegistry {
 
     system.registerGenericUDF("to_epoch_milli", GenericUDFEpochMilli.class);
     system.registerGenericUDF("bucket_number", GenericUDFBucketNumber.class);
+    system.registerGenericUDF("tumbling_window", GenericUDFTumbledWindow.class);
 
     // Generic UDTF's
     system.registerGenericUDTF("explode", GenericUDTFExplode.class);
@@ -1113,8 +1118,11 @@ public final class FunctionRegistry {
       String detailedMsg = e instanceof java.lang.reflect.InvocationTargetException ?
         e.getCause().getMessage() : e.getMessage();
 
-      throw new HiveException("Unable to execute method " + m + " with arguments "
-          + argumentString + ":" + detailedMsg, e);
+      // Log the arguments into a debug message for the ease of debugging. But when exposed through
+      // an error message they can leak sensitive information, even to the client application.
+      LOG.trace("Unable to execute method " + m + " with arguments "
+              + argumentString);
+      throw new HiveException("Unable to execute method " + m + ":" + detailedMsg, e);
     }
     return o;
   }

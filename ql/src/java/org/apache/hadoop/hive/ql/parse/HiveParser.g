@@ -805,6 +805,7 @@ explainOption
     : KW_EXTENDED
     | KW_FORMATTED
     | KW_DEPENDENCY
+    | KW_CBO KW_EXTENDED?
     | KW_LOGICAL
     | KW_AUTHORIZATION
     | KW_ANALYZE
@@ -2999,8 +3000,8 @@ whenNotMatchedClause
 @init { pushMsg("WHEN NOT MATCHED clause", state); }
 @after { popMsg(state); }
    :
-  KW_WHEN KW_NOT KW_MATCHED (KW_AND expression)? KW_THEN KW_INSERT KW_VALUES valueRowConstructor ->
-    ^(TOK_NOT_MATCHED ^(TOK_INSERT valueRowConstructor) expression?)
+  KW_WHEN KW_NOT KW_MATCHED (KW_AND expression)? KW_THEN KW_INSERT (targetCols=columnParenthesesList)? KW_VALUES valueRowConstructor ->
+    ^(TOK_NOT_MATCHED ^(TOK_INSERT $targetCols? valueRowConstructor) expression?)
   ;
 whenMatchedAndClause
 @init { pushMsg("WHEN MATCHED AND clause", state); }

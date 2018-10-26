@@ -50,6 +50,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import javax.security.auth.login.LoginException;
 
+import com.google.common.base.Preconditions;
 import org.apache.hadoop.classification.InterfaceAudience;
 import org.apache.hadoop.classification.InterfaceStability;
 import org.apache.hadoop.conf.Configuration;
@@ -67,6 +68,7 @@ import org.apache.hadoop.hive.metastore.utils.JavaUtils;
 import org.apache.hadoop.hive.metastore.utils.MetaStoreUtils;
 import org.apache.hadoop.hive.metastore.utils.ObjectPair;
 import org.apache.hadoop.hive.metastore.utils.SecurityUtils;
+import org.apache.hadoop.hive.metastore.utils.LogUtils;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.hadoop.util.ReflectionUtils;
 import org.apache.hadoop.util.StringUtils;
@@ -527,6 +529,10 @@ public class HiveMetaStoreClient implements IMetaStoreClient, AutoCloseable {
               transport = SecurityUtils.getSSLSocket(store.getHost(), store.getPort(), clientSocketTimeout,
                   trustStorePath, trustStorePassword );
               LOG.info("Opened an SSL connection to metastore, current connections: " + connCount.incrementAndGet());
+              if (LOG.isTraceEnabled()) {
+                LOG.trace("", new LogUtils.StackTraceLogger("METASTORE SSL CONNECTION TRACE - open - " +
+                        System.identityHashCode(this)));
+              }
             } catch(IOException e) {
               throw new IllegalArgumentException(e);
             } catch(TTransportException e) {
@@ -587,6 +593,10 @@ public class HiveMetaStoreClient implements IMetaStoreClient, AutoCloseable {
             if (!transport.isOpen()) {
               transport.open();
               LOG.info("Opened a connection to metastore, current connections: " + connCount.incrementAndGet());
+              if (LOG.isTraceEnabled()) {
+                LOG.trace("", new LogUtils.StackTraceLogger("METASTORE CONNECTION TRACE - open - " +
+                        System.identityHashCode(this)));
+              }
             }
             isConnected = true;
           } catch (TTransportException e) {
@@ -670,6 +680,10 @@ public class HiveMetaStoreClient implements IMetaStoreClient, AutoCloseable {
     if ((transport != null) && transport.isOpen()) {
       transport.close();
       LOG.info("Closed a connection to metastore, current connections: " + connCount.decrementAndGet());
+      if (LOG.isTraceEnabled()) {
+        LOG.trace("", new LogUtils.StackTraceLogger("METASTORE CONNECTION TRACE - close - " +
+                System.identityHashCode(this)));
+      }
     }
   }
 
@@ -2454,7 +2468,7 @@ public class HiveMetaStoreClient implements IMetaStoreClient, AutoCloseable {
     return copy;
   }
 
-  private List<Partition> deepCopyPartitions(List<Partition> partitions) {
+  protected List<Partition> deepCopyPartitions(List<Partition> partitions) {
     return deepCopyPartitions(partitions, null);
   }
 
@@ -2814,6 +2828,20 @@ public class HiveMetaStoreClient implements IMetaStoreClient, AutoCloseable {
   public void commitTxn(long txnid)
           throws NoSuchTxnException, TxnAbortedException, TException {
     client.commit_txn(new CommitTxnRequest(txnid));
+  }
+
+  @Override
+  public void commitTxnWithKeyValue(long txnid, long tableId, String key,
+      String value) throws NoSuchTxnException,
+      TxnAbortedException, TException {
+    CommitTxnRequest ctr = new CommitTxnRequest(txnid);
+    Preconditions.checkNotNull(key, "The key to commit together"
+        + " with the transaction can't be null");
+    Preconditions.checkNotNull(value, "The value to commit together"
+        + " with the transaction can't be null");
+    ctr.setKeyValue(new CommitTxnKeyValue(tableId, key, value));
+
+    client.commit_txn(ctr);
   }
 
   @Override
@@ -3633,5 +3661,11 @@ public class HiveMetaStoreClient implements IMetaStoreClient, AutoCloseable {
     req.setMaxWeight(maxWeight);
     req.setMaxCreateTime(maxCreateTime);
     return client.get_runtime_stats(req);
+  }
+
+  @Override
+  public GetPartitionsResponse getPartitionsWithSpecs(GetPartitionsRequest request)
+      throws TException {
+    return client.get_partitions_with_specs(request);
   }
 }
