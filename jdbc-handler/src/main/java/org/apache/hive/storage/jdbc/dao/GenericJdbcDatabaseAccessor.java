@@ -59,7 +59,7 @@ public class GenericJdbcDatabaseAccessor implements DatabaseAccessor {
   protected static final int DEFAULT_FETCH_SIZE = 1000;
   protected static final Logger LOGGER = LoggerFactory.getLogger(GenericJdbcDatabaseAccessor.class);
   protected DataSource dbcpDataSource = null;
-  static final Pattern fromPattern = Pattern.compile("(.*?\\sfrom\\s)(.*+)", Pattern.CASE_INSENSITIVE);
+  static final Pattern fromPattern = Pattern.compile("(.*?\\sfrom\\s)(.*+)", Pattern.CASE_INSENSITIVE|Pattern.DOTALL);
 
 
   public GenericJdbcDatabaseAccessor() {
@@ -174,7 +174,7 @@ public class GenericJdbcDatabaseAccessor implements DatabaseAccessor {
     catch (Exception e) {
       LOGGER.error("Caught exception while trying to execute query", e);
       cleanupResources(conn, ps, rs);
-      throw new HiveJdbcDatabaseAccessException("Caught exception while trying to execute query", e);
+      throw new HiveJdbcDatabaseAccessException("Caught exception while trying to execute query:" + e.getMessage(), e);
     }
   }
 

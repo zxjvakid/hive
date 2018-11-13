@@ -167,35 +167,36 @@ public class Hive {
   private IMetaStoreClient metaStoreClient;
   private SynchronizedMetaStoreClient syncMetaStoreClient;
   private UserGroupInformation owner;
+  private boolean isAllowClose = true;
 
   // metastore calls timing information
   private final ConcurrentHashMap<String, Long> metaCallTimeMap = new ConcurrentHashMap<>();
 
-  // Static class to store thread local Hive object and allowClose flag.
+  // Static class to store thread local Hive object.
   private static class ThreadLocalHive extends ThreadLocal<Hive> {
-    private ThreadLocal<Boolean> allowClose = ThreadLocal.withInitial(() -> true);
-
     @Override
     protected Hive initialValue() {
       return null;
     }
 
     @Override
-    public synchronized void remove() {
-      if (allowClose() && (this.get() != null)) {
-        this.get().close();
+    public synchronized void set(Hive hiveObj) {
+      Hive currentHive = this.get();
+      if (currentHive != hiveObj) {
+        // Remove/close current thread-local Hive object before overwriting with new Hive object.
+        remove();
+        super.set(hiveObj);
       }
-      super.remove();
-      this.allowClose.set(true);
     }
 
-    public synchronized void set(Hive hiveObj, boolean allowClose) {
-      super.set(hiveObj);
-      this.allowClose.set(allowClose);
-    }
-
-    boolean allowClose() {
-      return this.allowClose.get();
+    @Override
+    public synchronized void remove() {
+      Hive currentHive = this.get();
+      if (currentHive != null) {
+        // Close the metastore connections before removing it from thread local hiveDB.
+        currentHive.close(false);
+        super.remove();
+      }
     }
   }
 
@@ -317,7 +318,12 @@ public class Hive {
     Hive db = hiveDB.get();
     if (db == null || !db.isCurrentUserOwner() || needsRefresh
         || (c != null && !isCompatible(db, c, isFastCheck))) {
-      db = create(c, false, db, doRegisterAllFns);
+      if (db != null) {
+        LOG.debug("Creating new db. db = " + db + ", needsRefresh = " + needsRefresh +
+                ", db.isCurrentUserOwner = " + db.isCurrentUserOwner());
+        closeCurrent();
+      }
+      db = create(c, doRegisterAllFns);
     }
     if (c != null) {
       db.conf = c;
@@ -325,25 +331,15 @@ public class Hive {
     return db;
   }
 
-  private static Hive create(HiveConf c, boolean needsRefresh, Hive db, boolean doRegisterAllFns)
-      throws HiveException {
-    if (db != null) {
-      LOG.debug("Creating new db. db = " + db + ", needsRefresh = " + needsRefresh +
-        ", db.isCurrentUserOwner = " + db.isCurrentUserOwner());
-      if (hiveDB.allowClose()) {
-        db.close();
-      }
-    }
-    closeCurrent();
+  private static Hive create(HiveConf c, boolean doRegisterAllFns) throws HiveException {
     if (c == null) {
       c = createHiveConf();
     }
     c.set("fs.scheme.class", "dfs");
     Hive newdb = new Hive(c, doRegisterAllFns);
-    hiveDB.set(newdb, true);
+    hiveDB.set(newdb);
     return newdb;
   }
-
 
   private static HiveConf createHiveConf() {
     SessionState session = SessionState.get();
@@ -358,6 +354,18 @@ public class Hive {
       return (db.metaStoreClient == null || db.metaStoreClient.isCompatibleWith(c))
           && (db.syncMetaStoreClient == null || db.syncMetaStoreClient.isCompatibleWith(c));
     }
+  }
+
+  private boolean isCurrentUserOwner() throws HiveException {
+    try {
+      return owner == null || owner.equals(UserGroupInformation.getCurrentUser());
+    } catch(IOException e) {
+      throw new HiveException("Error getting current user: " + e.getMessage(), e);
+    }
+  }
+
+  public static Hive getThreadLocal() {
+    return hiveDB.get();
   }
 
   public static Hive get() throws HiveException {
@@ -383,19 +391,11 @@ public class Hive {
   }
 
   public static void set(Hive hive) {
-    hiveDB.set(hive, true);
-  }
-
-  public static void set(Hive hive, boolean allowClose) {
-    hiveDB.set(hive, allowClose);
+    hiveDB.set(hive);
   }
 
   public static void closeCurrent() {
     hiveDB.remove();
-  }
-
-  public static Hive getThreadLocal() {
-    return hiveDB.get();
   }
 
   /**
@@ -411,30 +411,49 @@ public class Hive {
     }
   }
 
-
-  private boolean isCurrentUserOwner() throws HiveException {
-    try {
-      return owner == null || owner.equals(UserGroupInformation.getCurrentUser());
-    } catch(IOException e) {
-      throw new HiveException("Error getting current user: " + e.getMessage(), e);
-    }
+  /**
+   * GC is attempting to destroy the object.
+   * No one references this Hive anymore, so HMS connection from this Hive object can be closed.
+   * @throws Throwable
+   */
+  @Override
+  protected void finalize() throws Throwable {
+    close(true);
+    super.finalize();
   }
 
-
+  /**
+   * Marks if the given Hive object is allowed to close metastore connections.
+   * @param allowClose
+   */
+  public void setAllowClose(boolean allowClose) {
+    isAllowClose = allowClose;
+  }
 
   /**
-   * closes the connection to metastore for the calling thread
+   * Gets the allowClose flag which determines if it is allowed to close metastore connections.
+   * @returns allowClose flag
    */
-  private void close() {
-    LOG.debug("Closing current thread's connection to Hive Metastore.");
-    if (metaStoreClient != null) {
-      metaStoreClient.close();
-      metaStoreClient = null;
-    }
-    // syncMetaStoreClient is wrapped on metaStoreClient. So, it is enough to close it once.
-    syncMetaStoreClient = null;
-    if (owner != null) {
-      owner = null;
+  public boolean allowClose() {
+    return isAllowClose;
+  }
+
+  /**
+   * Closes the connection to metastore for the calling thread if allow to close.
+   * @param forceClose - Override the isAllowClose flag to forcefully close the MS connections.
+   */
+  public void close(boolean forceClose) {
+    if (allowClose() || forceClose) {
+      LOG.debug("Closing current thread's connection to Hive Metastore.");
+      if (metaStoreClient != null) {
+        metaStoreClient.close();
+        metaStoreClient = null;
+      }
+      // syncMetaStoreClient is wrapped on metaStoreClient. So, it is enough to close it once.
+      syncMetaStoreClient = null;
+      if (owner != null) {
+        owner = null;
+      }
     }
   }
 
@@ -4016,11 +4035,21 @@ private void constructOneLBLocationMap(FileStatus fSta,
       destFs.copyFromLocalFile(sourcePath, destFilePath);
     } else {
       if (!FileUtils.copy(sourceFs, sourcePath, destFs, destFilePath,
-          true,   // delete source
+          false,   // delete source
           false,  // overwrite destination
           conf)) {
         LOG.error("Copy failed for source: " + sourcePath + " to destination: " + destFilePath);
         throw new IOException("File copy failed.");
+      }
+
+      // Source file delete may fail because of permission issue as executing user might not
+      // have permission to delete the files in the source path. Ignore this failure.
+      try {
+        if (!sourceFs.delete(sourcePath, true)) {
+          LOG.warn("Delete source failed for source: " + sourcePath + " during copy to destination: " + destFilePath);
+        }
+      } catch (Exception e) {
+        LOG.warn("Delete source failed for source: " + sourcePath + " during copy to destination: " + destFilePath, e);
       }
     }
     return destFilePath;
@@ -5637,9 +5666,15 @@ private void constructOneLBLocationMap(FileStatus fSta,
     }
   }
 
-
   public void createResourcePlan(WMResourcePlan resourcePlan, String copyFromName, boolean ifNotExists)
       throws HiveException {
+    String ns = conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE);
+    if (resourcePlan.isSetNs() && !ns.equals(resourcePlan.getNs())) {
+      throw new HiveException("Cannot create a plan in a different NS; was "
+          + resourcePlan.getNs() + ", configured " + ns);
+    }
+    resourcePlan.setNs(ns);
+
     try {
       getMSC().createResourcePlan(resourcePlan, copyFromName);
     } catch (AlreadyExistsException e) {
@@ -5653,7 +5688,7 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public WMFullResourcePlan getResourcePlan(String rpName) throws HiveException {
     try {
-      return getMSC().getResourcePlan(rpName);
+      return getMSC().getResourcePlan(rpName, conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE));
     } catch (NoSuchObjectException e) {
       return null;
     } catch (Exception e) {
@@ -5663,7 +5698,7 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public List<WMResourcePlan> getAllResourcePlans() throws HiveException {
     try {
-      return getMSC().getAllResourcePlans();
+      return getMSC().getAllResourcePlans(conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE));
     } catch (Exception e) {
       throw new HiveException(e);
     }
@@ -5671,7 +5706,8 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public void dropResourcePlan(String rpName, boolean ifExists) throws HiveException {
     try {
-      getMSC().dropResourcePlan(rpName);
+      String ns = conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE);
+      getMSC().dropResourcePlan(rpName, ns);
     } catch (NoSuchObjectException e) {
       if (!ifExists) {
         throw new HiveException(e, ErrorMsg.RESOURCE_PLAN_NOT_EXISTS, rpName);
@@ -5684,7 +5720,13 @@ private void constructOneLBLocationMap(FileStatus fSta,
   public WMFullResourcePlan alterResourcePlan(String rpName, WMNullableResourcePlan resourcePlan,
       boolean canActivateDisabled, boolean isForceDeactivate, boolean isReplace) throws HiveException {
     try {
-      return getMSC().alterResourcePlan(rpName, resourcePlan, canActivateDisabled,
+      String ns = conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE);
+      if (resourcePlan.isSetNs() && !ns.equals(resourcePlan.getNs())) {
+        throw new HiveException("Cannot modify a plan in a different NS; was "
+            + resourcePlan.getNs() + ", configured " + ns);
+      }
+      resourcePlan.setNs(ns);
+      return getMSC().alterResourcePlan(rpName, ns, resourcePlan, canActivateDisabled,
           isForceDeactivate, isReplace);
     } catch (Exception e) {
       throw new HiveException(e);
@@ -5693,7 +5735,8 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public WMFullResourcePlan getActiveResourcePlan() throws HiveException {
     try {
-      return getMSC().getActiveResourcePlan();
+      String ns = conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE);
+      return getMSC().getActiveResourcePlan(ns);
     } catch (Exception e) {
       throw new HiveException(e);
     }
@@ -5701,7 +5744,8 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public WMValidateResourcePlanResponse validateResourcePlan(String rpName) throws HiveException {
     try {
-      return getMSC().validateResourcePlan(rpName);
+      String ns = conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE);
+      return getMSC().validateResourcePlan(rpName, ns);
     } catch (Exception e) {
       throw new HiveException(e);
     }
@@ -5709,6 +5753,12 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public void createWMTrigger(WMTrigger trigger) throws HiveException {
     try {
+      String ns = conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE);
+      if (trigger.isSetNs() && !ns.equals(trigger.getNs())) {
+        throw new HiveException("Cannot create a trigger in a different NS; was "
+            + trigger.getNs() + ", configured " + ns);
+      }
+      trigger.setNs(ns);
       getMSC().createWMTrigger(trigger);
     } catch (Exception e) {
       throw new HiveException(e);
@@ -5717,6 +5767,12 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public void alterWMTrigger(WMTrigger trigger) throws HiveException {
     try {
+      String ns = conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE);
+      if (trigger.isSetNs() && !ns.equals(trigger.getNs())) {
+        throw new HiveException("Cannot modify a trigger in a different NS; was "
+            + trigger.getNs() + ", configured " + ns);
+      }
+      trigger.setNs(ns);
       getMSC().alterWMTrigger(trigger);
     } catch (Exception e) {
       throw new HiveException(e);
@@ -5725,7 +5781,7 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public void dropWMTrigger(String rpName, String triggerName) throws HiveException {
     try {
-      getMSC().dropWMTrigger(rpName, triggerName);
+      getMSC().dropWMTrigger(rpName, triggerName, conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE));
     } catch (Exception e) {
       throw new HiveException(e);
     }
@@ -5733,6 +5789,12 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public void createWMPool(WMPool pool) throws HiveException {
     try {
+      String ns = conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE);
+      if (pool.isSetNs() && !ns.equals(pool.getNs())) {
+        throw new HiveException("Cannot create a pool in a different NS; was "
+            + pool.getNs() + ", configured " + ns);
+      }
+      pool.setNs(ns);
       getMSC().createWMPool(pool);
     } catch (Exception e) {
       throw new HiveException(e);
@@ -5741,6 +5803,12 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public void alterWMPool(WMNullablePool pool, String poolPath) throws HiveException {
     try {
+      String ns = conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE);
+      if (pool.isSetNs() && !ns.equals(pool.getNs())) {
+        throw new HiveException("Cannot modify a pool in a different NS; was "
+            + pool.getNs() + ", configured " + ns);
+      }
+      pool.setNs(ns);
       getMSC().alterWMPool(pool, poolPath);
     } catch (Exception e) {
       throw new HiveException(e);
@@ -5749,7 +5817,8 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public void dropWMPool(String resourcePlanName, String poolPath) throws HiveException {
     try {
-      getMSC().dropWMPool(resourcePlanName, poolPath);
+      getMSC().dropWMPool(resourcePlanName, poolPath,
+          conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE));
     } catch (Exception e) {
       throw new HiveException(e);
     }
@@ -5758,6 +5827,12 @@ private void constructOneLBLocationMap(FileStatus fSta,
   public void createOrUpdateWMMapping(WMMapping mapping, boolean isUpdate)
       throws HiveException {
     try {
+      String ns = conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE);
+      if (mapping.isSetNs() && !ns.equals(mapping.getNs())) {
+        throw new HiveException("Cannot create a mapping in a different NS; was "
+            + mapping.getNs() + ", configured " + ns);
+      }
+      mapping.setNs(ns);
       getMSC().createOrUpdateWMMapping(mapping, isUpdate);
     } catch (Exception e) {
       throw new HiveException(e);
@@ -5766,17 +5841,24 @@ private void constructOneLBLocationMap(FileStatus fSta,
 
   public void dropWMMapping(WMMapping mapping) throws HiveException {
     try {
+      String ns = conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE);
+      if (mapping.isSetNs() && !ns.equals(mapping.getNs())) {
+        throw new HiveException("Cannot modify a mapping in a different NS; was "
+            + mapping.getNs() + ", configured " + ns);
+      }
+      mapping.setNs(ns);
       getMSC().dropWMMapping(mapping);
     } catch (Exception e) {
       throw new HiveException(e);
     }
   }
 
-
+  // TODO: eh
   public void createOrDropTriggerToPoolMapping(String resourcePlanName, String triggerName,
       String poolPath, boolean shouldDrop) throws HiveException {
     try {
-      getMSC().createOrDropTriggerToPoolMapping(resourcePlanName, triggerName, poolPath, shouldDrop);
+      getMSC().createOrDropTriggerToPoolMapping(resourcePlanName, triggerName, poolPath,
+          shouldDrop, conf.getVar(ConfVars.HIVE_SERVER2_WM_NAMESPACE));
     } catch (Exception e) {
       throw new HiveException(e);
     }

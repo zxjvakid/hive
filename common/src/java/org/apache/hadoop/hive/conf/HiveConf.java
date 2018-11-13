@@ -2468,7 +2468,7 @@ public class HiveConf extends Configuration {
         "in the number of rows filtered by a certain operator, which in turn might lead to overprovision or\n" +
         "underprovision of resources. This factor is applied to the cardinality estimation of IN clauses in\n" +
         "filter operators."),
-    HIVE_STATS_IN_MIN_RATIO("hive.stats.filter.in.min.ratio", (float) 0.05,
+    HIVE_STATS_IN_MIN_RATIO("hive.stats.filter.in.min.ratio", (float) 0.0f,
         "Output estimation of an IN filter can't be lower than this ratio"),
     HIVE_STATS_UDTF_FACTOR("hive.stats.udtf.factor", (float) 1.0,
         "UDTFs change the number of rows of the output. A common UDTF is the explode() method that creates\n" +
@@ -3208,6 +3208,10 @@ public class HiveConf extends Configuration {
     HIVE_SERVER2_TEZ_INTERACTIVE_QUEUE("hive.server2.tez.interactive.queue", "",
         "A single YARN queues to use for Hive Interactive sessions. When this is specified,\n" +
         "workload management is enabled and used for these sessions."),
+    HIVE_SERVER2_WM_NAMESPACE("hive.server2.wm.namespace", "default",
+        "The WM namespace to use when one metastore is used by multiple compute clusters each \n" +
+        "with their own workload management. The special value 'default' (the default) will \n" +
+        "also include any resource plans created before the namespaces were introduced."),
     HIVE_SERVER2_WM_WORKER_THREADS("hive.server2.wm.worker.threads", 4,
         "Number of worker threads to use to perform the synchronous operations with Tez\n" +
         "sessions for workload management (e.g. opening, closing, etc.)"),
@@ -4423,17 +4427,29 @@ public class HiveConf extends Configuration {
       "Merge adjacent joins into a single n-way join"),
     HIVE_LOG_N_RECORDS("hive.log.every.n.records", 0L, new RangeValidator(0L, null),
       "If value is greater than 0 logs in fixed intervals of size n rather than exponentially."),
+    /**
+     * @deprecated Use MetastoreConf.MSCK_PATH_VALIDATION
+     */
+    @Deprecated
     HIVE_MSCK_PATH_VALIDATION("hive.msck.path.validation", "throw",
         new StringSet("throw", "skip", "ignore"), "The approach msck should take with HDFS " +
        "directories that are partition-like but contain unsupported characters. 'throw' (an " +
        "exception) is the default; 'skip' will skip the invalid directories and still repair the" +
        " others; 'ignore' will skip the validation (legacy behavior, causes bugs in many cases)"),
+    /**
+     * @deprecated Use MetastoreConf.MSCK_REPAIR_BATCH_SIZE
+     */
+    @Deprecated
     HIVE_MSCK_REPAIR_BATCH_SIZE(
         "hive.msck.repair.batch.size", 3000,
         "Batch size for the msck repair command. If the value is greater than zero,\n "
             + "it will execute batch wise with the configured batch size. In case of errors while\n"
             + "adding unknown partitions the batch size is automatically reduced by half in the subsequent\n"
             + "retry attempt. The default value is 3000 which means it will execute in the batches of 3000."),
+    /**
+     * @deprecated Use MetastoreConf.MSCK_REPAIR_BATCH_MAX_RETRIES
+     */
+    @Deprecated
     HIVE_MSCK_REPAIR_BATCH_MAX_RETRIES("hive.msck.repair.batch.max.retries", 4,
         "Maximum number of retries for the msck repair command when adding unknown partitions.\n "
         + "If the value is greater than zero it will retry adding unknown partitions until the maximum\n"

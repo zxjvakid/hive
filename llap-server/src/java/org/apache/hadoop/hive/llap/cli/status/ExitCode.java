@@ -16,20 +16,29 @@
  * limitations under the License.
  */
 
-package org.apache.hadoop.hive.ql.exec.vector;
-
-import org.apache.hadoop.hive.serde2.AbstractSerDe;
-import org.apache.hadoop.hive.serde2.SerDeException;
-import org.apache.hadoop.hive.serde2.objectinspector.ObjectInspector;
-import org.apache.hadoop.io.Writable;
+package org.apache.hadoop.hive.llap.cli.status;
 
 /**
- * Serdes that support vectorized {@link VectorizedRowBatch} must implement this interface.
+ * Enumeration of the potential outcomes of the Llap state checking.
  */
-public abstract class VectorizedSerde extends AbstractSerDe {
-  public abstract Writable serializeVector(
-      VectorizedRowBatch vrg, ObjectInspector objInspector) throws SerDeException;
+public enum ExitCode {
+  SUCCESS(0),
+  INCORRECT_USAGE(10),
+  YARN_ERROR(20),
+  SERVICE_CLIENT_ERROR_CREATE_FAILED(30),
+  SERVICE_CLIENT_ERROR_OTHER(31),
+  LLAP_REGISTRY_ERROR(40),
+  LLAP_JSON_GENERATION_ERROR(50),
+  // Error in the script itself - likely caused by an incompatible change, or new functionality / states added.
+  INTERNAL_ERROR(100);
 
-  public abstract void deserializeVector(
-      Object rowBlob, int rowsInBlob, VectorizedRowBatch reuseBatch) throws SerDeException;
+  private final int code;
+
+  ExitCode(int code) {
+    this.code = code;
+  }
+
+  public int getCode() {
+    return code;
+  }
 }

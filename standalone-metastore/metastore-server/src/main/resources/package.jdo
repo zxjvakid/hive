@@ -489,7 +489,7 @@
            <column name="PARAM_KEY" length="256" jdbc-type="VARCHAR"/>
         </key>
         <value>
-           <column name="PARAM_VALUE" length="4000" jdbc-type="VARCHAR"/>
+           <column name="PARAM_VALUE" jdbc-type="CLOB"/>
         </value>
       </field>
       <field name="writeId">
@@ -1230,6 +1230,9 @@
       <field name="name">
         <column name="NAME" length="128" jdbc-type="VARCHAR" allows-null="false"/>
       </field>
+      <field name="ns">
+        <column name="NS" length="128" jdbc-type="VARCHAR" allows-null="true"/>
+      </field>
       <field name="queryParallelism">
         <column name="QUERY_PARALLELISM" jdbc-type="integer" allows-null="true"/>
       </field>
@@ -1241,6 +1244,7 @@
       </field>
       <index name="UniqueResourcePlan" unique="true">
         <column name="NAME"/>
+        <column name="NS"/>
       </index>
 
       <field name="pools" mapped-by="resourcePlan">

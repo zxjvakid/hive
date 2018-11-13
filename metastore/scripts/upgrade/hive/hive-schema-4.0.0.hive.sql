@@ -941,6 +941,7 @@ FROM `PARTITION_PARAMS` GROUP BY `PART_ID`;
 
 CREATE EXTERNAL TABLE IF NOT EXISTS `WM_RESOURCEPLANS` (
   `NAME` string,
+  `NS` string,
   `STATUS` string,
   `QUERY_PARALLELISM` int,
   `DEFAULT_POOL_PATH` string
@@ -951,6 +952,7 @@ TBLPROPERTIES (
 "hive.sql.query" =
 "SELECT
   \"WM_RESOURCEPLAN\".\"NAME\",
+  case when \"WM_RESOURCEPLAN\".\"NS\" is null then 'default' else \"WM_RESOURCEPLAN\".\"NS\" end AS NS,
   \"STATUS\",
   \"WM_RESOURCEPLAN\".\"QUERY_PARALLELISM\",
   \"WM_POOL\".\"PATH\"
@@ -960,6 +962,7 @@ FROM
 
 CREATE EXTERNAL TABLE IF NOT EXISTS `WM_TRIGGERS` (
   `RP_NAME` string,
+  `NS` string,
   `NAME` string,
   `TRIGGER_EXPRESSION` string,
   `ACTION_EXPRESSION` string
@@ -970,6 +973,7 @@ TBLPROPERTIES (
 "hive.sql.query" =
 "SELECT
   r.\"NAME\" AS RP_NAME,
+  case when r.\"NS\" is null then 'default' else r.\"NS\" end,
   t.\"NAME\" AS NAME,
   \"TRIGGER_EXPRESSION\",
   \"ACTION_EXPRESSION\"
@@ -983,6 +987,7 @@ ON
 
 CREATE EXTERNAL TABLE IF NOT EXISTS `WM_POOLS` (
   `RP_NAME` string,
+  `NS` string,
   `PATH` string,
   `ALLOC_FRACTION` double,
   `QUERY_PARALLELISM` int,
@@ -994,6 +999,7 @@ TBLPROPERTIES (
 "hive.sql.query" =
 "SELECT
   \"WM_RESOURCEPLAN\".\"NAME\",
+  case when \"WM_RESOURCEPLAN\".\"NS\" is null then 'default' else \"WM_RESOURCEPLAN\".\"NS\" end AS NS,
   \"WM_POOL\".\"PATH\",
   \"WM_POOL\".\"ALLOC_FRACTION\",
   \"WM_POOL\".\"QUERY_PARALLELISM\",
@@ -1008,6 +1014,7 @@ ON
 
 CREATE EXTERNAL TABLE IF NOT EXISTS `WM_POOLS_TO_TRIGGERS` (
   `RP_NAME` string,
+  `NS` string,
   `POOL_PATH` string,
   `TRIGGER_NAME` string
 )
@@ -1017,6 +1024,7 @@ TBLPROPERTIES (
 "hive.sql.query" =
 "SELECT
   \"WM_RESOURCEPLAN\".\"NAME\" AS RP_NAME,
+  case when \"WM_RESOURCEPLAN\".\"NS\" is null then 'default' else \"WM_RESOURCEPLAN\".\"NS\" end AS NS,
   \"WM_POOL\".\"PATH\" AS POOL_PATH,
   \"WM_TRIGGER\".\"NAME\" AS TRIGGER_NAME
 FROM \"WM_POOL_TO_TRIGGER\"
@@ -1026,6 +1034,7 @@ FROM \"WM_POOL_TO_TRIGGER\"
 UNION
 SELECT
   \"WM_RESOURCEPLAN\".\"NAME\" AS RP_NAME,
+  case when \"WM_RESOURCEPLAN\".\"NS\" is null then 'default' else \"WM_RESOURCEPLAN\".\"NS\" end AS NS,
   '<unmanaged queries>' AS POOL_PATH,
   \"WM_TRIGGER\".\"NAME\" AS TRIGGER_NAME
 FROM \"WM_TRIGGER\"
@@ -1036,6 +1045,7 @@ WHERE CAST(\"WM_TRIGGER\".\"IS_IN_UNMANAGED\" AS CHAR) IN ('1', 't')
 
 CREATE EXTERNAL TABLE IF NOT EXISTS `WM_MAPPINGS` (
   `RP_NAME` string,
+  `NS` string,
   `ENTITY_TYPE` string,
   `ENTITY_NAME` string,
   `POOL_PATH` string,
@@ -1047,6 +1057,7 @@ TBLPROPERTIES (
 "hive.sql.query" =
 "SELECT
   \"WM_RESOURCEPLAN\".\"NAME\",
+  case when \"WM_RESOURCEPLAN\".\"NS\" is null then 'default' else \"WM_RESOURCEPLAN\".\"NS\" end AS NS,
   \"ENTITY_TYPE\",
   \"ENTITY_NAME\",
   case when \"WM_POOL\".\"PATH\" is null then '<unmanaged>' else \"WM_POOL\".\"PATH\" end,
@@ -1080,11 +1091,10 @@ SELECT DISTINCT
   cast(null as string),
   `DB_LOCATION_URI`
 FROM
-  `sys`.`DBS` D, `sys`.`TBLS` T, `sys`.`TBL_PRIVS` P
+  `sys`.`DBS` D LEFT JOIN `sys`.`TBLS` T ON (D.`DB_ID` = T.`DB_ID`)
+                LEFT JOIN `sys`.`TBL_PRIVS` P ON (T.`TBL_ID` = P.`TBL_ID`)
 WHERE
-  NOT restrict_information_schema() OR
-  D.`DB_ID` = T.`DB_ID`
-  AND T.`TBL_ID` = P.`TBL_ID`
+  NOT restrict_information_schema() OR P.`TBL_ID` IS NOT NULL
   AND (P.`PRINCIPAL_NAME`=current_user() AND P.`PRINCIPAL_TYPE`='USER'
     OR ((array_contains(current_groups(), P.`PRINCIPAL_NAME`) OR P.`PRINCIPAL_NAME` = 'public') AND P.`PRINCIPAL_TYPE`='GROUP'))
   AND current_authorizer() = P.`AUTHORIZER`;
@@ -1118,12 +1128,12 @@ SELECT DISTINCT
   'NO',
   cast(null as string)
 FROM
-  `sys`.`TBLS` T, `sys`.`DBS` D, `sys`.`TBL_PRIVS` P
+  `sys`.`TBLS` T JOIN `sys`.`DBS` D ON (D.`DB_ID` = T.`DB_ID`)
+                 LEFT JOIN `sys`.`TBL_PRIVS` P ON (T.`TBL_ID` = P.`TBL_ID`)
 WHERE
-  D.`DB_ID` = T.`DB_ID`
-  AND (NOT restrict_information_schema() OR T.`TBL_ID` = P.`TBL_ID`
+  NOT restrict_information_schema() OR P.`TBL_ID` IS NOT NULL
   AND (P.`PRINCIPAL_NAME`=current_user() AND P.`PRINCIPAL_TYPE`='USER'
-    OR ((array_contains(current_groups(), P.`PRINCIPAL_NAME`) OR P.`PRINCIPAL_NAME` = 'public') AND P.`PRINCIPAL_TYPE`='GROUP')))
+    OR ((array_contains(current_groups(), P.`PRINCIPAL_NAME`) OR P.`PRINCIPAL_NAME` = 'public') AND P.`PRINCIPAL_TYPE`='GROUP'))
   AND P.`TBL_PRIV`='SELECT' AND P.`AUTHORIZER`=current_authorizer();
 
 CREATE OR REPLACE VIEW `TABLE_PRIVILEGES`
@@ -1147,18 +1157,15 @@ SELECT DISTINCT
   IF (P.`GRANT_OPTION` == 0, 'NO', 'YES'),
   'NO'
 FROM
-  `sys`.`TBL_PRIVS` P,
-  `sys`.`TBLS` T,
-  `sys`.`DBS` D,
-  `sys`.`TBL_PRIVS` P2
+  `sys`.`TBL_PRIVS` P JOIN `sys`.`TBLS` T ON (P.`TBL_ID` = T.`TBL_ID`)
+                      JOIN `sys`.`DBS` D ON (T.`DB_ID` = D.`DB_ID`)
+                      LEFT JOIN `sys`.`TBL_PRIVS` P2 ON (P.`TBL_ID` = P2.`TBL_ID`)
 WHERE
-  P.`TBL_ID` = T.`TBL_ID`
-  AND T.`DB_ID` = D.`DB_ID`
-  AND (NOT restrict_information_schema() OR
-  P.`TBL_ID` = P2.`TBL_ID` AND P.`PRINCIPAL_NAME` = P2.`PRINCIPAL_NAME` AND P.`PRINCIPAL_TYPE` = P2.`PRINCIPAL_TYPE`
+  NOT restrict_information_schema() OR
+  (P2.`TBL_ID` IS NOT NULL AND P.`PRINCIPAL_NAME` = P2.`PRINCIPAL_NAME` AND P.`PRINCIPAL_TYPE` = P2.`PRINCIPAL_TYPE`
   AND (P2.`PRINCIPAL_NAME`=current_user() AND P2.`PRINCIPAL_TYPE`='USER'
-    OR ((array_contains(current_groups(), P2.`PRINCIPAL_NAME`) OR P2.`PRINCIPAL_NAME` = 'public') AND P2.`PRINCIPAL_TYPE`='GROUP')))
-  AND P2.`TBL_PRIV`='SELECT' AND P.`AUTHORIZER` = current_authorizer() AND P2.`AUTHORIZER` = current_authorizer();
+    OR ((array_contains(current_groups(), P2.`PRINCIPAL_NAME`) OR P2.`PRINCIPAL_NAME` = 'public') AND P2.`PRINCIPAL_TYPE`='GROUP'))
+  AND P2.`TBL_PRIV`='SELECT' AND P.`AUTHORIZER` = current_authorizer() AND P2.`AUTHORIZER` = current_authorizer());
 
 CREATE OR REPLACE VIEW `COLUMNS`
 (
@@ -1299,21 +1306,16 @@ SELECT DISTINCT
        WHEN lower(C.TYPE_NAME) like 'numeric%' THEN 10
        ELSE null END
 FROM
-  `sys`.`COLUMNS_V2` C,
-  `sys`.`SDS` S,
-  `sys`.`TBLS` T,
-  `sys`.`DBS` D,
-  `sys`.`TBL_COL_PRIVS` P
+  `sys`.`COLUMNS_V2` C JOIN `sys`.`SDS` S ON (C.`CD_ID` = S.`CD_ID`)
+                       JOIN `sys`.`TBLS` T ON (S.`SD_ID` = T.`SD_ID`)
+                       JOIN `sys`.`DBS` D ON (T.`DB_ID` = D.`DB_ID`)
+                       LEFT JOIN `sys`.`TBL_COL_PRIVS` P ON (T.`TBL_ID` = P.`TBL_ID`)
 WHERE
-  S.`SD_ID` = T.`SD_ID`
-  AND T.`DB_ID` = D.`DB_ID`
-  AND C.`CD_ID` = S.`CD_ID`
-  AND (NOT restrict_information_schema() OR
-  T.`TBL_ID` = P.`TBL_ID`
+  NOT restrict_information_schema() OR P.`TBL_ID` IS NOT NULL
   AND C.`COLUMN_NAME` = P.`COLUMN_NAME`
   AND (P.`PRINCIPAL_NAME`=current_user() AND P.`PRINCIPAL_TYPE`='USER'
     OR ((array_contains(current_groups(), P.`PRINCIPAL_NAME`) OR P.`PRINCIPAL_NAME` = 'public') AND P.`PRINCIPAL_TYPE`='GROUP'))
-  AND P.`TBL_COL_PRIV`='SELECT' AND P.`AUTHORIZER`=current_authorizer());
+  AND P.`TBL_COL_PRIV`='SELECT' AND P.`AUTHORIZER`=current_authorizer();
 
 CREATE OR REPLACE VIEW `COLUMN_PRIVILEGES`
 (
@@ -1336,20 +1338,16 @@ SELECT DISTINCT
   P.`TBL_COL_PRIV`,
   IF (P.`GRANT_OPTION` == 0, 'NO', 'YES')
 FROM
-  `sys`.`TBL_COL_PRIVS` P,
-  `sys`.`TBLS` T,
-  `sys`.`DBS` D,
-  `sys`.`SDS` S,
-  `sys`.`TBL_PRIVS` P2
+  `sys`.`TBL_COL_PRIVS` P JOIN `sys`.`TBLS` T ON (P.`TBL_ID` = T.`TBL_ID`)
+                          JOIN `sys`.`DBS` D ON (T.`DB_ID` = D.`DB_ID`)
+                          JOIN `sys`.`SDS` S ON (S.`SD_ID` = T.`SD_ID`)
+                          LEFT JOIN `sys`.`TBL_PRIVS` P2 ON (P.`TBL_ID` = P2.`TBL_ID`)
 WHERE
-  S.`SD_ID` = T.`SD_ID`
-  AND T.`DB_ID` = D.`DB_ID`
-  AND P.`TBL_ID` = T.`TBL_ID`
-  AND (NOT restrict_information_schema() OR
-  P.`TBL_ID` = P2.`TBL_ID` AND P.`PRINCIPAL_NAME` = P2.`PRINCIPAL_NAME` AND P.`PRINCIPAL_TYPE` = P2.`PRINCIPAL_TYPE`
+  NOT restrict_information_schema() OR P2.`TBL_ID` IS NOT NULL
+  AND P.`PRINCIPAL_NAME` = P2.`PRINCIPAL_NAME` AND P.`PRINCIPAL_TYPE` = P2.`PRINCIPAL_TYPE`
   AND (P2.`PRINCIPAL_NAME`=current_user() AND P2.`PRINCIPAL_TYPE`='USER'
     OR ((array_contains(current_groups(), P2.`PRINCIPAL_NAME`) OR P2.`PRINCIPAL_NAME` = 'public') AND P2.`PRINCIPAL_TYPE`='GROUP'))
-  AND P2.`TBL_PRIV`='SELECT' AND P.`AUTHORIZER`=current_authorizer() AND P2.`AUTHORIZER`=current_authorizer());
+  AND P2.`TBL_PRIV`='SELECT' AND P.`AUTHORIZER`=current_authorizer() AND P2.`AUTHORIZER`=current_authorizer();
 
 CREATE OR REPLACE VIEW `VIEWS`
 (
@@ -1376,14 +1374,11 @@ SELECT DISTINCT
   false,
   false
 FROM
-  `sys`.`DBS` D,
-  `sys`.`TBLS` T,
-  `sys`.`TBL_PRIVS` P
+  `sys`.`DBS` D JOIN `sys`.`TBLS` T ON (D.`DB_ID` = T.`DB_ID`)
+                LEFT JOIN `sys`.`TBL_PRIVS` P ON (T.`TBL_ID` = P.`TBL_ID`)
 WHERE
-  D.`DB_ID` = T.`DB_ID`
-  AND length(T.VIEW_ORIGINAL_TEXT) > 0
-  AND (NOT restrict_information_schema() OR
-  T.`TBL_ID` = P.`TBL_ID`
+  length(T.VIEW_ORIGINAL_TEXT) > 0
+  AND (NOT restrict_information_schema() OR P.`TBL_ID` IS NOT NULL
   AND (P.`PRINCIPAL_NAME`=current_user() AND P.`PRINCIPAL_TYPE`='USER'
     OR ((array_contains(current_groups(), P.`PRINCIPAL_NAME`) OR P.`PRINCIPAL_NAME` = 'public') AND P.`PRINCIPAL_TYPE`='GROUP'))
   AND P.`TBL_PRIV`='SELECT' AND P.`AUTHORIZER`=current_authorizer());
